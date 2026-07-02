@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Star Runner — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px 20px; pointer-events: none;
+    font-family: "Courier New", monospace; color: #9fdcff;
+    text-shadow: 0 0 8px rgba(80, 180, 255, 0.8);
+    z-index: 10;
+  }
+  #hud .label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; }
+  #hud .value { font-size: 26px; font-weight: bold; }
+  #hud .right { text-align: right; }
+  #overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(0,10,30,0.55), rgba(0,0,0,0.85));
+    font-family: "Courier New", monospace; color: #cfeaff;
+    z-index: 20; transition: opacity 0.35s;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  #overlay h1 {
+    font-size: clamp(34px, 8vw, 64px); letter-spacing: 8px;
+    color: #7fd0ff; text-shadow: 0 0 24px rgba(80,180,255,0.9);
+  }
+  #overlay p { font-size: 14px; opacity: 0.85; letter-spacing: 1px; text-align: center; line-height: 1.8; }
+  #overlay .score-line { font-size: 20px; color: #ffd27f; text-shadow: 0 0 12px rgba(255,190,80,0.8); }
+  #overlay button {
+    pointer-events: auto; cursor: pointer;
+    font-family: inherit; font-size: 16px; letter-spacing: 3px;
+    padding: 14px 42px; color: #001624;
+    background: linear-gradient(180deg, #8fd8ff, #3aa0e0);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(80,180,255,0.55);
+  }
+  #overlay button:active { transform: scale(0.96); }
+  #overlay .back { font-size: 11px; opacity: 0.6; }
+  #overlay a { color: #9fdcff; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>
+    <div class="label">SCORE</div>
+    <div class="value" id="score">0</div>
+  </div>
+  <div class="right">
+    <div class="label">BEST</div>
+    <div class="value" id="best">0</div>
+  </div>
+</div>
+
+<div id="overlay">
+  <h1>STAR RUNNER</h1>
+  <p id="overlay-msg">小惑星帯を突き抜けろ。<br>操作: 矢印キー / WASD / 画面ドラッグ</p>
+  <div class="score-line" id="overlay-score" style="display:none"></div>
+  <button id="start-btn">START</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- 基本セットアップ ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000208, 0.010);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 400);
+
+scene.add(new THREE.AmbientLight(0x334455, 1.2));
+const keyLight = new THREE.DirectionalLight(0xaaccff, 2.2);
+keyLight.position.set(5, 8, 6);
+scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0xff8855, 0.8);
+rimLight.position.set(-6, -3, -4);
+scene.add(rimLight);
+
+// ---------- プレイヤー機体（プリミティブ組み立て）----------
+function buildShip() {
+  const ship = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xd8e4f0, metalness: 0.7, roughness: 0.3 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0x2277cc, metalness: 0.5, roughness: 0.4 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x66ddff });
+
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.45, 2.2, 8), hullMat);
+  body.rotation.x = -Math.PI / 2;
+  ship.add(body);
+
+  const wingGeo = new THREE.BoxGeometry(2.4, 0.08, 0.7);
+  const wing = new THREE.Mesh(wingGeo, accentMat);
+  wing.position.set(0, -0.1, 0.5);
+  ship.add(wing);
+
+  const finGeo = new THREE.BoxGeometry(0.08, 0.7, 0.5);
+  const fin = new THREE.Mesh(finGeo, accentMat);
+  fin.position.set(0, 0.35, 0.6);
+  ship.add(fin);
+
+  const cockpit = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 12, 12),
+    new THREE.MeshStandardMaterial({ color: 0x88ddff, metalness: 0.2, roughness: 0.1, emissive: 0x225577 })
+  );
+  cockpit.position.set(0, 0.18, -0.2);
+  ship.add(cockpit);
+
+  for (const sx of [-0.9, 0.9]) {
+    const engine = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.5, 8), hullMat);
+    engine.rotation.x = Math.PI / 2;
+    engine.position.set(sx, -0.1, 0.75);
+    ship.add(engine);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.6, 8), glowMat);
+    flame.rotation.x = Math.PI / 2;
+    flame.position.set(sx, -0.1, 1.25);
+    flame.userData.isFlame = true;
+    ship.add(flame);
+  }
+  return ship;
+}
+const ship = buildShip();
+scene.add(ship);
+
+// ---------- 星空（Points）----------
+function buildStars(count, spread, size, color) {
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * spread;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * spread;
+    pos[i * 3 + 2] = -Math.random() * 300;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ color, size, sizeAttenuation: true, transparent: true, opacity: 0.9 });
+  return new THREE.Points(geo, mat);
+}
+const starsNear = buildStars(600, 120, 0.35, 0xffffff);
+const starsFar = buildStars(900, 200, 0.2, 0x88aaff);
+scene.add(starsNear, starsFar);
+
+// ---------- 小惑星 ----------
+const ASTEROID_POOL = 40;
+const asteroids = [];
+const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 0.95, metalness: 0.05, flatShading: true });
+const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x6a7a8a, roughness: 0.9, metalness: 0.1, flatShading: true });
+
+function makeAsteroidGeometry() {
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(p, i);
+    v.multiplyScalar(0.75 + Math.random() * 0.5);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+for (let i = 0; i < ASTEROID_POOL; i++) {
+  const mesh = new THREE.Mesh(makeAsteroidGeometry(), Math.random() < 0.5 ? rockMat : rockMat2);
+  mesh.visible = false;
+  mesh.userData = {
+    active: false,
+    radius: 1,
+    spin: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2),
+  };
+  scene.add(mesh);
+  asteroids.push(mesh);
+}
+
+// ---------- 爆発パーティクル ----------
+const DEBRIS = 60;
+const debrisGeo = new THREE.BufferGeometry();
+debrisGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DEBRIS * 3), 3));
+const debrisVel = [];
+for (let i = 0; i < DEBRIS; i++) debrisVel.push(new THREE.Vector3());
+const debrisMat = new THREE.PointsMaterial({ color: 0xffaa44, size: 0.3, transparent: true, opacity: 0 });
+const debris = new THREE.Points(debrisGeo, debrisMat);
+scene.add(debris);
+let debrisLife = 0;
+
+function explode(origin) {
+  const p = debrisGeo.attributes.position;
+  for (let i = 0; i < DEBRIS; i++) {
+    p.setXYZ(i, origin.x, origin.y, origin.z);
+    debrisVel[i].set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize()
+      .multiplyScalar(4 + Math.random() * 14);
+  }
+  p.needsUpdate = true;
+  debrisLife = 1.2;
+  debrisMat.opacity = 1;
+}
+
+// ---------- 入力 ----------
+const input = { x: 0, y: 0 };
+const keys = new Set();
+addEventListener('keydown', e => { keys.add(e.code); if (e.code === 'Space' || e.code === 'Enter') tryStart(); });
+addEventListener('keyup', e => keys.delete(e.code));
+
+let touchActive = false, touchX = 0, touchY = 0, touchStartShip = new THREE.Vector2();
+addEventListener('pointerdown', e => {
+  touchActive = true; touchX = e.clientX; touchY = e.clientY;
+  touchStartShip.set(ship.position.x, ship.position.y);
+});
+addEventListener('pointermove', e => {
+  if (!touchActive) return;
+  const scale = 22 / window.innerHeight;
+  targetPos.x = touchStartShip.x + (e.clientX - touchX) * scale;
+  targetPos.y = touchStartShip.y - (e.clientY - touchY) * scale;
+});
+addEventListener('pointerup', () => { touchActive = false; });
+
+// ---------- ゲーム状態 ----------
+const BOUNDS = { x: 12, y: 7 };
+const targetPos = new THREE.Vector2(0, 0);
+let running = false;
+let speed = 30;          // 前進速度（見かけ上: 小惑星が迫る速度）
+let score = 0;
+let best = Number(localStorage.getItem('star-runner-best') || 0);
+let spawnTimer = 0;
+let elapsed = 0;
+
+const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best');
+const overlay = document.getElementById('overlay');
+const overlayMsg = document.getElementById('overlay-msg');
+const overlayScore = document.getElementById('overlay-score');
+const startBtn = document.getElementById('start-btn');
+bestEl.textContent = best;
+
+function resetGame() {
+  score = 0; speed = 30; spawnTimer = 0; elapsed = 0;
+  ship.position.set(0, 0, 0);
+  ship.rotation.set(0, 0, 0);
+  ship.visible = true;
+  targetPos.set(0, 0);
+  for (const a of asteroids) { a.userData.active = false; a.visible = false; }
+}
+
+function tryStart() {
+  if (running) return;
+  resetGame();
+  running = true;
+  overlay.classList.add('hidden');
+}
+startBtn.addEventListener('click', tryStart);
+
+function gameOver() {
+  running = false;
+  ship.visible = false;
+  explode(ship.position.clone());
+  if (score > best) {
+    best = score;
+    localStorage.setItem('star-runner-best', best);
+    bestEl.textContent = best;
+  }
+  overlayMsg.innerHTML = 'MISSION FAILED';
+  overlayScore.style.display = 'block';
+  overlayScore.textContent = `SCORE: ${score}   BEST: ${best}`;
+  startBtn.textContent = 'RETRY';
+  setTimeout(() => overlay.classList.remove('hidden'), 700);
+}
+
+// ---------- 小惑星スポーン ----------
+function spawnAsteroid() {
+  const a = asteroids.find(x => !x.userData.active);
+  if (!a) return;
+  const r = 0.8 + Math.random() * 2.2;
+  a.scale.setScalar(r);
+  a.userData.radius = r * 0.9;
+  a.userData.active = true;
+  a.visible = true;
+  a.position.set(
+    (Math.random() - 0.5) * BOUNDS.x * 2.6,
+    (Math.random() - 0.5) * BOUNDS.y * 2.6,
+    -160 - Math.random() * 40
+  );
+}
+
+// ---------- メインループ ----------
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (running) {
+    elapsed += dt;
+    speed = 30 + elapsed * 1.5;                 // 徐々に加速
+    score += Math.round(speed * dt);
+    scoreEl.textContent = score;
+
+    // キー入力 → 目標位置
+    const move = 24 * dt;
+    if (keys.has('ArrowLeft') || keys.has('KeyA')) targetPos.x -= move;
+    if (keys.has('ArrowRight') || keys.has('KeyD')) targetPos.x += move;
+    if (keys.has('ArrowUp') || keys.has('KeyW')) targetPos.y += move;
+    if (keys.has('ArrowDown') || keys.has('KeyS')) targetPos.y -= move;
+    targetPos.x = THREE.MathUtils.clamp(targetPos.x, -BOUNDS.x, BOUNDS.x);
+    targetPos.y = THREE.MathUtils.clamp(targetPos.y, -BOUNDS.y, BOUNDS.y);
+
+    // 機体をスムーズに追従・バンク
+    ship.position.x += (targetPos.x - ship.position.x) * Math.min(1, 10 * dt);
+    ship.position.y += (targetPos.y - ship.position.y) * Math.min(1, 10 * dt);
+    ship.rotation.z = (targetPos.x - ship.position.x) * -0.15;
+    ship.rotation.x = (targetPos.y - ship.position.y) * 0.08;
+
+    // エンジン炎の揺らぎ
+    for (const c of ship.children) {
+      if (c.userData.isFlame) c.scale.y = 0.8 + Math.sin(t * 40 + c.position.x * 7) * 0.25 + speed / 300;
+    }
+
+    // スポーン頻度は速度に応じて上昇
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnAsteroid();
+      spawnTimer = Math.max(0.12, 0.5 - elapsed * 0.008);
+    }
+
+    // 小惑星の移動・衝突判定
+    for (const a of asteroids) {
+      if (!a.userData.active) continue;
+      a.position.z += speed * dt;
+      a.rotation.x += a.userData.spin.x * dt;
+      a.rotation.y += a.userData.spin.y * dt;
+      a.rotation.z += a.userData.spin.z * dt;
+      if (a.position.z > 15) { a.userData.active = false; a.visible = false; continue; }
+      const dist = a.position.distanceTo(ship.position);
+      if (dist < a.userData.radius + 0.7) gameOver();
+    }
+  }
+
+  // 星のスクロール（常時）
+  const starSpeed = running ? speed : 12;
+  for (const stars of [starsNear, starsFar]) {
+    const p = stars.geometry.attributes.position;
+    const factor = stars === starsNear ? 1 : 0.4;
+    for (let i = 0; i < p.count; i++) {
+      let z = p.getZ(i) + starSpeed * factor * dt;
+      if (z > 5) z = -300;
+      p.setZ(i, z);
+    }
+    p.needsUpdate = true;
+  }
+
+  // 爆発パーティクル更新
+  if (debrisLife > 0) {
+    debrisLife -= dt;
+    debrisMat.opacity = Math.max(0, debrisLife / 1.2);
+    const p = debrisGeo.attributes.position;
+    for (let i = 0; i < DEBRIS; i++) {
+      p.setXYZ(i,
+        p.getX(i) + debrisVel[i].x * dt,
+        p.getY(i) + debrisVel[i].y * dt,
+        p.getZ(i) + debrisVel[i].z * dt);
+    }
+    p.needsUpdate = true;
+  }
+
+  // カメラ: 機体を柔らかく追う
+  camera.position.x += (ship.position.x * 0.55 - camera.position.x) * Math.min(1, 4 * dt);
+  camera.position.y += (ship.position.y * 0.55 + 2.2 - camera.position.y) * Math.min(1, 4 * dt);
+  camera.position.z = 8;
+  camera.lookAt(ship.position.x * 0.7, ship.position.y * 0.7, -10);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

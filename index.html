@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fable 3D Games — Claude Fable 5 で作る 3D ゲーム集</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background: radial-gradient(ellipse at 50% -20%, #10203a, #04070f 70%);
+    color: #dce8f5;
+    font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+    padding: 48px 24px 80px;
+  }
+  header { text-align: center; margin-bottom: 48px; }
+  header h1 {
+    font-size: clamp(28px, 6vw, 48px);
+    letter-spacing: 4px;
+    background: linear-gradient(90deg, #7fd0ff, #b48fff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header p { margin-top: 12px; opacity: 0.7; font-size: 14px; line-height: 1.8; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(140, 190, 255, 0.18);
+    border-radius: 12px;
+    padding: 24px;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(140, 190, 255, 0.55);
+    box-shadow: 0 8px 30px rgba(60, 140, 255, 0.18);
+  }
+  .card .thumb {
+    font-size: 40px;
+    margin-bottom: 14px;
+  }
+  .card h2 { font-size: 20px; margin-bottom: 8px; color: #9fdcff; }
+  .card p { font-size: 13px; opacity: 0.75; line-height: 1.7; }
+  .card .tags { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .card .tag {
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    background: rgba(100, 170, 255, 0.12); color: #8fc8ff;
+    border: 1px solid rgba(100, 170, 255, 0.25);
+  }
+  footer { text-align: center; margin-top: 64px; font-size: 12px; opacity: 0.5; }
+  footer a { color: #8fc8ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FABLE 3D GAMES</h1>
+  <p>Claude Fable 5 でどこまで 3D ゲーム開発ができるかを試す実験場。<br>
+  すべてブラウザ（HTML + WebGL）上で動作します。</p>
+</header>
+
+<main class="grid">
+  <a class="card" href="games/star-runner/">
+    <div class="thumb">🚀</div>
+    <h2>Star Runner</h2>
+    <p>小惑星帯を突き抜ける 3D アバシューランナー。加速し続ける宇宙空間で、迫りくる小惑星をどこまで避けられるか。</p>
+    <div class="tags">
+      <span class="tag">Three.js</span>
+      <span class="tag">キーボード / タッチ</span>
+      <span class="tag">エンドレス</span>
+    </div>
+  </a>
+</main>
+
+<footer>
+  Built with Claude — <a href="https://github.com/shironagasu-ai/claude-fable5-3D-games">GitHub</a>
+</footer>
+</body>
+</html>
