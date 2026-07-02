@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Airlock Escape — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas { display: block; }
+  body { font-family: "Courier New", monospace; }
+
+  #crosshair {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(180, 220, 255, 0.9);
+    box-shadow: 0 0 6px rgba(120, 200, 255, 0.9);
+    z-index: 5; pointer-events: none;
+  }
+  #hint {
+    position: fixed; left: 50%; top: 56%; transform: translateX(-50%);
+    color: #cfeaff; font-size: 14px; letter-spacing: 1px;
+    text-shadow: 0 0 8px rgba(80, 180, 255, 0.9);
+    z-index: 5; pointer-events: none; white-space: nowrap;
+  }
+  #message {
+    position: fixed; left: 50%; bottom: 14%; transform: translateX(-50%);
+    max-width: 90vw;
+    color: #ffe9c0; font-size: 15px; line-height: 1.7; text-align: center;
+    text-shadow: 0 0 10px rgba(0,0,0,0.9), 0 0 14px rgba(255,180,80,0.4);
+    background: rgba(10, 8, 4, 0.55); padding: 10px 22px; border-radius: 8px;
+    z-index: 5; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  #timer {
+    position: fixed; top: 14px; right: 18px;
+    color: #9fdcff; font-size: 20px; letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(80, 180, 255, 0.8); z-index: 5;
+  }
+  #objective {
+    position: fixed; top: 14px; left: 18px;
+    color: #9fdcff; font-size: 12px; letter-spacing: 2px; opacity: 0.75;
+    text-shadow: 0 0 8px rgba(80, 180, 255, 0.8); z-index: 5;
+  }
+  #inventory {
+    position: fixed; bottom: 16px; left: 16px; display: flex; gap: 10px; z-index: 5;
+  }
+  #inventory .item {
+    color: #cfeaff; font-size: 13px; letter-spacing: 1px;
+    background: rgba(20, 40, 70, 0.6); border: 1px solid rgba(120, 190, 255, 0.4);
+    padding: 8px 14px; border-radius: 6px;
+    text-shadow: 0 0 6px rgba(80, 180, 255, 0.8);
+  }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(5, 8, 18, 0.7), rgba(0, 0, 0, 0.9));
+    color: #cfeaff; z-index: 20; transition: opacity 0.35s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: clamp(30px, 7vw, 56px); letter-spacing: 8px;
+    color: #7fd0ff; text-shadow: 0 0 24px rgba(80, 180, 255, 0.9);
+  }
+  .overlay p { font-size: 14px; opacity: 0.85; letter-spacing: 1px; text-align: center; line-height: 1.9; }
+  .overlay .score-line { font-size: 20px; color: #ffd27f; text-shadow: 0 0 12px rgba(255, 190, 80, 0.8); }
+  .overlay button {
+    cursor: pointer; font-family: inherit; font-size: 16px; letter-spacing: 3px;
+    padding: 14px 42px; color: #001624;
+    background: linear-gradient(180deg, #8fd8ff, #3aa0e0);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(80, 180, 255, 0.55);
+  }
+  .overlay button:active { transform: scale(0.96); }
+  .overlay .back { font-size: 11px; opacity: 0.6; }
+  .overlay a { color: #9fdcff; }
+
+  #keypad {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    background: rgba(8, 14, 26, 0.96); border: 1px solid rgba(120, 190, 255, 0.5);
+    border-radius: 12px; padding: 22px; z-index: 30;
+    box-shadow: 0 0 40px rgba(60, 140, 255, 0.35);
+    display: none; flex-direction: column; gap: 14px; align-items: center;
+  }
+  #keypad.open { display: flex; }
+  #keypad .display {
+    width: 100%; text-align: center; font-size: 28px; letter-spacing: 10px;
+    color: #7fffb0; background: #041008; border: 1px solid rgba(120, 255, 180, 0.35);
+    border-radius: 6px; padding: 10px 0; min-height: 54px;
+    text-shadow: 0 0 10px rgba(100, 255, 160, 0.8);
+  }
+  #keypad .display.error { color: #ff7070; text-shadow: 0 0 10px rgba(255, 90, 90, 0.9); }
+  #keypad .grid { display: grid; grid-template-columns: repeat(3, 64px); gap: 8px; }
+  #keypad .grid button {
+    font-family: inherit; font-size: 20px; padding: 14px 0; cursor: pointer;
+    color: #cfeaff; background: rgba(40, 70, 110, 0.6);
+    border: 1px solid rgba(120, 190, 255, 0.4); border-radius: 6px;
+  }
+  #keypad .grid button:active { background: rgba(90, 150, 220, 0.7); }
+  #keypad .close-btn {
+    font-family: inherit; font-size: 12px; letter-spacing: 2px; cursor: pointer;
+    color: #9fdcff; background: none; border: none; opacity: 0.7; padding: 4px;
+  }
+
+  #resume {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    color: #cfeaff; font-size: 15px; letter-spacing: 2px;
+    background: rgba(10, 16, 30, 0.75); padding: 14px 28px; border-radius: 8px;
+    border: 1px solid rgba(120, 190, 255, 0.4); z-index: 15; display: none;
+  }
+</style>
+</head>
+<body>
+<div id="crosshair"></div>
+<div id="hint"></div>
+<div id="message"></div>
+<div id="objective">MISSION: モジュールから脱出せよ</div>
+<div id="timer">00:00</div>
+<div id="inventory"></div>
+<div id="resume">クリックして再開</div>
+
+<div id="keypad">
+  <div class="display" id="keypad-display"></div>
+  <div class="grid">
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+    <button data-k="C">C</button><button data-k="0">0</button><button data-k="E">OK</button>
+  </div>
+  <button class="close-btn" id="keypad-close">✕ はなれる</button>
+</div>
+
+<div class="overlay" id="start-overlay">
+  <h1>AIRLOCK ESCAPE</h1>
+  <p>ステーションの電源が落ち、モジュールに閉じ込められた。<br>
+  手がかりを探し、エアロックを開けて脱出せよ。<br><br>
+  移動: WASD / 視点: マウス / 調べる: クリック or E<br>
+  （スマホ: 左半分ドラッグで移動・右半分で視点・タップで調べる）</p>
+  <div class="score-line" id="best-line" style="display:none"></div>
+  <button id="start-btn">START</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<div class="overlay hidden" id="clear-overlay">
+  <h1>ESCAPED</h1>
+  <p>エアロックの向こうに、救助艇の灯りが見えた。</p>
+  <div class="score-line" id="clear-time"></div>
+  <button onclick="location.reload()">RETRY</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ================= 基本セットアップ =================
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x02030a, 0.045);
+
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 100);
+const player = { pos: new THREE.Vector3(0, 1.6, 2.2), yaw: Math.PI, pitch: 0, radius: 0.35 };
+
+// ================= 状態 =================
+const state = {
+  started: false, cleared: false,
+  crateMoved: false, keycard: false, lockerOpen: false, fuse: false,
+  fuseInstalled: false, power: false, doorOpen: false,
+  startTime: 0,
+};
+const CODE = String(Math.floor(1000 + Math.random() * 9000));
+
+// ================= マテリアル =================
+const matWall = new THREE.MeshStandardMaterial({ color: 0x6a7480, roughness: 0.85, metalness: 0.3 });
+const matWallDark = new THREE.MeshStandardMaterial({ color: 0x3a424c, roughness: 0.9, metalness: 0.3 });
+const matFloor = new THREE.MeshStandardMaterial({ color: 0x2e343c, roughness: 0.95, metalness: 0.2 });
+const matAccent = new THREE.MeshStandardMaterial({ color: 0x22485c, roughness: 0.6, metalness: 0.5 });
+const matDark = new THREE.MeshStandardMaterial({ color: 0x1a1e24, roughness: 0.8, metalness: 0.4 });
+
+// ================= 部屋の構築 =================
+// 部屋: x∈[-5,5], z∈[-4,4], 高さ3.2 / ドアは z=-4 の壁 / 通路は z -4〜-8
+const room = new THREE.Group();
+scene.add(room);
+
+function box(w, h, d, mat, x, y, z, parent = room) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+
+box(10.4, 0.2, 8.4, matFloor, 0, -0.1, 0);          // 床
+box(10.4, 0.2, 8.4, matWallDark, 0, 3.3, 0);        // 天井
+box(0.2, 3.2, 8.4, matWall, -5.1, 1.6, 0);          // -x 壁
+box(0.2, 3.2, 8.4, matWall, 5.1, 1.6, 0);           // +x 壁
+box(10.4, 3.2, 0.2, matWall, 0, 1.6, 4.1);          // +z 壁
+// -z 壁（ドア開口部つき: 開口 x∈[-0.9,0.9], 高さ2.3）
+box(4.2, 3.2, 0.2, matWall, -3.0, 1.6, -4.1);
+box(4.2, 3.2, 0.2, matWall, 3.0, 1.6, -4.1);
+box(1.8, 0.9, 0.2, matWall, 0, 2.75, -4.1);
+
+// 壁のパネルモール（飾り）
+for (let i = -4; i <= 4; i += 2) {
+  box(0.06, 3.0, 0.08, matDark, i, 1.5, 4.0);
+  if (Math.abs(i) > 1.5) box(0.06, 3.0, 0.08, matDark, i, 1.5, -4.0);
+}
+for (let i = -3; i <= 3; i += 2) {
+  box(0.08, 3.0, 0.06, matDark, -5.0, 1.5, i);
+  box(0.08, 3.0, 0.06, matDark, 5.0, 1.5, i);
+}
+box(10.4, 0.14, 0.06, matAccent, 0, 1.0, 4.03);
+box(0.06, 0.14, 8.4, matAccent, -5.03, 1.0, 0);
+box(0.06, 0.14, 8.4, matAccent, 5.03, 1.0, 0);
+
+// 天井パイプ
+for (const pz of [-2.6, -2.2]) {
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 10, 10), matDark);
+  pipe.rotation.z = Math.PI / 2;
+  pipe.position.set(0, 3.05, pz);
+  room.add(pipe);
+}
+
+// ---- 窓（+z 壁・外は星空） ----
+function makeStarTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#010208';
+  g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 320; i++) {
+    const b = Math.random();
+    g.fillStyle = `rgba(${180 + b * 75}, ${190 + b * 65}, 255, ${0.35 + b * 0.65})`;
+    const s = Math.random() < 0.06 ? 2.2 : 1.2;
+    g.fillRect(Math.random() * 512, Math.random() * 512, s, s);
+  }
+  return new THREE.CanvasTexture(c);
+}
+box(2.6, 1.3, 0.1, matDark, 0, 1.9, 4.05);          // 窓枠
+const windowPane = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.3, 1.0),
+  new THREE.MeshBasicMaterial({ map: makeStarTexture() })
+);
+windowPane.position.set(0, 1.9, 3.99);
+windowPane.rotation.y = Math.PI;
+room.add(windowPane);
+
+// ---- ドア（スライド式2枚）＋通路 ----
+const matDoor = new THREE.MeshStandardMaterial({ color: 0x8a94a2, roughness: 0.5, metalness: 0.7 });
+const doorL = box(0.9, 2.3, 0.12, matDoor, -0.45, 1.15, -4.05);
+const doorR = box(0.9, 2.3, 0.12, matDoor, 0.45, 1.15, -4.05);
+box(0.1, 2.5, 0.3, matAccent, -1.0, 1.25, -4.05);   // ドア枠
+box(0.1, 2.5, 0.3, matAccent, 1.0, 1.25, -4.05);
+box(2.1, 0.1, 0.3, matAccent, 0, 2.55, -4.05);
+
+// 通路 z -4 〜 -8（幅1.9）
+box(2.2, 0.2, 4.2, matFloor, 0, -0.1, -6);
+box(2.2, 0.2, 4.2, matWallDark, 0, 3.0, -6);
+box(0.2, 3.2, 4.2, matWallDark, -1.05, 1.5, -6);
+box(0.2, 3.2, 4.2, matWallDark, 1.05, 1.5, -6);
+const exitGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.9, 2.8),
+  new THREE.MeshBasicMaterial({ color: 0xbfe8ff })
+);
+exitGlow.position.set(0, 1.5, -8.05);
+room.add(exitGlow);
+const exitLight = new THREE.PointLight(0x99ccff, 0, 8);
+exitLight.position.set(0, 1.6, -7.2);
+scene.add(exitLight);
+
+// ================= インタラクト対象 =================
+const interactables = [];
+function register(root, id, name, hint, use) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.userData.interactId = id;
+    o.material = o.material.clone(); // ハイライトが共有マテリアルに波及しないよう分離
+  });
+  interactables.push({ id, root, name, hint, use, enabled: true });
+}
+function getInteractable(id) { return interactables.find(i => i.id === id); }
+
+// ---- コンテナ（動かすとカードキーが出る） ----
+const crate = new THREE.Group();
+{
+  const m = new THREE.MeshStandardMaterial({ color: 0x7a6a3a, roughness: 0.8, metalness: 0.3 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 1.0), m);
+  body.position.y = 0.45;
+  crate.add(body);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.12, 1.04), matDark);
+  band.position.y = 0.45;
+  crate.add(band);
+}
+crate.position.set(3.7, 0, 3.3);
+room.add(crate);
+register(crate, 'crate', 'コンテナ', 'クリックで動かす', () => {
+  if (state.crateMoved) return;
+  state.crateMoved = true;
+  getInteractable('crate').enabled = false;
+  animateTo(crate.position, { x: 2.1 }, 0.9, () => { keycard.visible = true; });
+  showMessage('コンテナを押しのけた。床に何か落ちている…');
+  sfx('slide');
+});
+
+// ---- カードキー ----
+const keycard = new THREE.Mesh(
+  new THREE.BoxGeometry(0.24, 0.02, 0.36),
+  new THREE.MeshStandardMaterial({ color: 0x3388ff, roughness: 0.4, metalness: 0.3, emissive: 0x112244 })
+);
+keycard.position.set(3.9, 0.02, 3.4);
+keycard.rotation.y = 0.5;
+keycard.visible = false;
+room.add(keycard);
+register(keycard, 'keycard', 'カードキー', 'クリックで拾う', () => {
+  state.keycard = true;
+  keycard.visible = false;
+  getInteractable('keycard').enabled = false;
+  showMessage('カードキーを手に入れた。');
+  updateInventory();
+  sfx('pickup');
+});
+
+// ---- ロッカー（カードキーで開く・中にヒューズ） ----
+const locker = new THREE.Group();
+const lockerDoorPivot = new THREE.Group();
+{
+  const m = new THREE.MeshStandardMaterial({ color: 0x45525f, roughness: 0.6, metalness: 0.6 });
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.0, 0.5), m);
+  shell.position.y = 1.0;
+  locker.add(shell);
+  const inner = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.9, 0.4), matDark);
+  inner.position.set(0, 1.0, 0.06);
+  locker.add(inner);
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 0.4), m);
+  shelf.position.set(0, 1.1, 0.06);
+  locker.add(shelf);
+  // 扉（右端ヒンジ）
+  lockerDoorPivot.position.set(0.45, 1.0, 0.26);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.88, 1.96, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0x55636f, roughness: 0.5, metalness: 0.7 }));
+  door.position.x = -0.44;
+  lockerDoorPivot.add(door);
+  const reader = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.03),
+    new THREE.MeshStandardMaterial({ color: 0x111418, emissive: 0x440000, emissiveIntensity: 1 }));
+  reader.position.set(-0.75, 0.1, 0.045);
+  lockerDoorPivot.add(reader);
+  locker.add(lockerDoorPivot);
+}
+locker.position.set(-4.7, 0, 1.5);
+locker.rotation.y = Math.PI / 2;
+room.add(locker);
+register(locker, 'locker', 'ロッカー', 'クリックで調べる', () => {
+  if (state.lockerOpen) return;
+  if (!state.keycard) {
+    showMessage('ロックされている。扉にカードリーダーが付いている。');
+    sfx('deny');
+    return;
+  }
+  state.lockerOpen = true;
+  getInteractable('locker').enabled = false;
+  getInteractable('fuse').enabled = true;
+  fuse.visible = true;
+  animateTo(lockerDoorPivot.rotation, { y: -1.9 }, 0.7);
+  showMessage('カードキーでロッカーが開いた。中に古いヒューズがある。');
+  sfx('unlock');
+});
+
+// ---- ヒューズ ----
+const fuse = new THREE.Group();
+{
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 10),
+    new THREE.MeshStandardMaterial({ color: 0xcc8833, roughness: 0.4, metalness: 0.5, emissive: 0x221100 }));
+  fuse.add(body);
+  for (const dy of [-0.09, 0.09]) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 10),
+      new THREE.MeshStandardMaterial({ color: 0xbbbbbb, metalness: 0.9, roughness: 0.3 }));
+    cap.position.y = dy;
+    fuse.add(cap);
+  }
+}
+fuse.position.set(-4.62, 1.24, 1.5);
+fuse.rotation.z = Math.PI / 2;
+fuse.visible = false;
+room.add(fuse);
+register(fuse, 'fuse', 'ヒューズ', 'クリックで拾う', () => {
+  state.fuse = true;
+  fuse.visible = false;
+  getInteractable('fuse').enabled = false;
+  showMessage('ヒューズを手に入れた。どこかに挿す場所があるはずだ。');
+  updateInventory();
+  sfx('pickup');
+});
+getInteractable('fuse').enabled = false;
+
+// ---- 配電盤（ヒューズで電源復旧） ----
+const panel = new THREE.Group();
+{
+  const face = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x3c4854, roughness: 0.5, metalness: 0.6 }));
+  panel.add(face);
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), matDark);
+  slot.position.set(0, 0.1, 0.07);
+  panel.add(slot);
+  const warn = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x333300, emissive: 0xaa8800, emissiveIntensity: 0.6 }));
+  warn.position.set(0, 0.42, 0.07);
+  panel.add(warn);
+}
+panel.position.set(-5.0, 1.5, -1.5);
+panel.rotation.y = Math.PI / 2;
+room.add(panel);
+const panelFuse = fuse.clone();
+panelFuse.visible = false;
+panelFuse.position.set(-4.93, 1.6, -1.5);
+room.add(panelFuse);
+register(panel, 'panel', '配電盤', 'クリックで調べる', () => {
+  if (state.fuseInstalled) return;
+  if (!state.fuse) {
+    showMessage('配電盤だ。ヒューズが1本抜け落ちて焼けている。代わりが必要だ。');
+    sfx('deny');
+    return;
+  }
+  state.fuseInstalled = true;
+  getInteractable('panel').enabled = false;
+  panelFuse.visible = true;
+  updateInventory();
+  showMessage('ヒューズを挿した——');
+  sfx('unlock');
+  powerRestoreSequence();
+});
+
+// ---- デスク＋モニター ----
+const desk = new THREE.Group();
+{
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 2.2), matAccent);
+  top.position.y = 0.85;
+  desk.add(top);
+  for (const [lx, lz] of [[-0.38, -1.0], [-0.38, 1.0], [0.38, -1.0], [0.38, 1.0]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.85, 0.06), matDark);
+    leg.position.set(lx, 0.42, lz);
+    desk.add(leg);
+  }
+}
+desk.position.set(4.5, 0, 0.5);
+room.add(desk);
+
+const monitorCanvas = document.createElement('canvas');
+monitorCanvas.width = 512; monitorCanvas.height = 288;
+const monitorCtx = monitorCanvas.getContext('2d');
+const monitorTex = new THREE.CanvasTexture(monitorCanvas);
+function drawMonitor(on) {
+  const g = monitorCtx;
+  g.fillStyle = '#020304';
+  g.fillRect(0, 0, 512, 288);
+  if (on) {
+    g.fillStyle = '#041018';
+    g.fillRect(0, 0, 512, 288);
+    g.strokeStyle = 'rgba(80,200,255,0.25)';
+    for (let y = 0; y < 288; y += 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
+    g.fillStyle = '#66ddff';
+    g.font = '22px monospace';
+    g.fillText('STATION OS v5.2 — MODULE 0', 24, 44);
+    g.fillText('POWER ......... RESTORED', 24, 84);
+    g.fillText('LIFE SUPPORT .. OK', 24, 116);
+    g.fillStyle = '#ffcc66';
+    g.fillText('AIRLOCK CODE:', 24, 176);
+    g.font = 'bold 64px monospace';
+    g.fillStyle = '#aaffcc';
+    g.fillText(CODE.split('').join(' '), 24, 248);
+  }
+  monitorTex.needsUpdate = true;
+}
+drawMonitor(false);
+
+const monitor = new THREE.Group();
+{
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.55, 0.9), matDark);
+  frame.position.y = 1.35;
+  monitor.add(frame);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.47),
+    new THREE.MeshBasicMaterial({ map: monitorTex }));
+  screen.position.set(-0.045, 1.35, 0);
+  screen.rotation.y = -Math.PI / 2;
+  monitor.add(screen);
+  const stand = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.25, 0.12), matDark);
+  stand.position.y = 1.0;
+  monitor.add(stand);
+}
+monitor.position.set(4.6, 0, 0.5);
+room.add(monitor);
+register(monitor, 'monitor', 'モニター', 'クリックで調べる', () => {
+  if (!state.power) { showMessage('モニターは真っ暗だ。電源が入っていない。'); sfx('deny'); return; }
+  showMessage(`画面に表示されている——「AIRLOCK CODE: ${CODE}」`);
+  sfx('beep');
+});
+
+// ---- キーパッド ----
+const keypadBox = new THREE.Group();
+let keypadLedMesh;
+{
+  const face = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0x2c3844, roughness: 0.5, metalness: 0.6 }));
+  keypadBox.add(face);
+  keypadLedMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x111418, emissive: 0x330000, emissiveIntensity: 1 }));
+  keypadLedMesh.position.set(0, 0.13, 0.05);
+  keypadBox.add(keypadLedMesh);
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.02), matDark);
+    b.position.set((c - 1) * 0.08, -0.02 - r * 0.08, 0.05);
+    keypadBox.add(b);
+  }
+}
+keypadBox.position.set(1.45, 1.45, -3.98);
+room.add(keypadBox);
+register(keypadBox, 'keypad', 'キーパッド', 'クリックで操作', () => {
+  if (!state.power) { showMessage('キーパッドの電源が入っていない。'); sfx('deny'); return; }
+  if (state.doorOpen) return;
+  openKeypadUI();
+});
+
+// ---- ドア本体のインタラクト ----
+const doorGroup = new THREE.Group();
+doorGroup.add(doorL, doorR);
+room.add(doorGroup);
+register(doorGroup, 'door', 'エアロックのドア', 'クリックで調べる', () => {
+  if (state.doorOpen) return;
+  showMessage(state.power
+    ? 'ロックされている。横のキーパッドでコードを入力するようだ。'
+    : 'ドアは完全に沈黙している。まず電源を復旧する必要がありそうだ。');
+  sfx('deny');
+});
+
+// 天井照明（電源復旧で点灯）
+const ceilLightMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffffff, emissiveIntensity: 0 });
+for (const lz of [-1.6, 1.6]) box(3.0, 0.06, 0.5, ceilLightMat, 0, 3.18, lz);
+
+// ================= 照明 =================
+const ambient = new THREE.AmbientLight(0x554455, 0.9);
+scene.add(ambient);
+const emergencyLight = new THREE.PointLight(0xff3322, 14, 24);
+emergencyLight.position.set(0, 2.9, 0);
+scene.add(emergencyLight);
+const emergencyLight2 = new THREE.PointLight(0xff5533, 6, 16);
+emergencyLight2.position.set(3.5, 2.7, 2.8);
+scene.add(emergencyLight2);
+const mainLight1 = new THREE.PointLight(0xdfeaff, 0, 16);
+mainLight1.position.set(0, 2.9, 1.6);
+scene.add(mainLight1);
+const mainLight2 = new THREE.PointLight(0xdfeaff, 0, 16);
+mainLight2.position.set(0, 2.9, -1.6);
+scene.add(mainLight2);
+
+function powerRestoreSequence() {
+  let flicks = 0;
+  const iv = setInterval(() => {
+    flicks++;
+    const on = flicks % 2 === 1;
+    mainLight1.intensity = on ? 5 : 0;
+    mainLight2.intensity = on ? 5 : 0;
+    ceilLightMat.emissiveIntensity = on ? 1 : 0;
+    if (flicks >= 5) {
+      clearInterval(iv);
+      state.power = true;
+      mainLight1.intensity = 7;
+      mainLight2.intensity = 7;
+      ceilLightMat.emissiveIntensity = 1;
+      emergencyLight.intensity = 0;
+      emergencyLight2.intensity = 0;
+      ambient.intensity = 1.1;
+      ambient.color.set(0x8899aa);
+      keypadLedMesh.material.emissive.set(0x00cc55); // register() で clone 済みの実マテリアルを更新
+      drawMonitor(true);
+      exitLight.intensity = 2;
+      showMessage('電源が復旧した！ 照明とシステムが起動していく。');
+      sfx('power');
+    }
+  }, 160);
+}
+
+// ================= キーパッド UI =================
+const keypadEl = document.getElementById('keypad');
+const keypadDisplay = document.getElementById('keypad-display');
+let keypadInput = '';
+let keypadOpen = false;
+
+function openKeypadUI() {
+  keypadOpen = true;
+  keypadInput = '';
+  keypadDisplay.textContent = '';
+  keypadDisplay.classList.remove('error');
+  keypadEl.classList.add('open');
+  document.exitPointerLock?.();
+}
+function closeKeypadUI() {
+  keypadOpen = false;
+  keypadEl.classList.remove('open');
+  if (state.started && !state.cleared && !isTouch) lockPointer();
+}
+document.getElementById('keypad-close').addEventListener('click', closeKeypadUI);
+keypadEl.querySelectorAll('.grid button').forEach(b => {
+  b.addEventListener('click', () => {
+    const k = b.dataset.k;
+    if (k === 'C') { keypadInput = ''; }
+    else if (k === 'E') { submitCode(); return; }
+    else if (keypadInput.length < 4) { keypadInput += k; sfx('beep'); }
+    keypadDisplay.classList.remove('error');
+    keypadDisplay.textContent = keypadInput;
+  });
+});
+function submitCode() {
+  if (keypadInput === CODE) {
+    sfx('unlock');
+    closeKeypadUI();
+    state.doorOpen = true;
+    animateTo(doorL.position, { x: -1.35 }, 1.2);
+    animateTo(doorR.position, { x: 1.35 }, 1.2);
+    showMessage('認証成功——エアロックのドアが開いた！ 通路の先へ進め。');
+    getInteractable('keypad').enabled = false;
+    getInteractable('door').enabled = false;
+  } else {
+    sfx('deny');
+    keypadDisplay.classList.add('error');
+    keypadDisplay.textContent = 'ERROR';
+    keypadInput = '';
+  }
+}
+
+// ================= アニメーション補助 =================
+const animations = [];
+function animateTo(target, props, duration, onDone) {
+  const from = {};
+  for (const k in props) from[k] = target[k];
+  animations.push({ target, props, from, duration, t: 0, onDone });
+}
+function updateAnimations(dt) {
+  for (let i = animations.length - 1; i >= 0; i--) {
+    const a = animations[i];
+    a.t += dt;
+    const u = Math.min(1, a.t / a.duration);
+    const e = 1 - Math.pow(1 - u, 3); // easeOutCubic
+    for (const k in a.props) a.target[k] = a.from[k] + (a.props[k] - a.from[k]) * e;
+    if (u >= 1) { animations.splice(i, 1); a.onDone?.(); }
+  }
+}
+
+// ================= サウンド（WebAudio 合成） =================
+let audioCtx = null;
+function sfx(kind) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const tones = {
+      beep:   [[880, 0.06, 0.12]],
+      pickup: [[660, 0.07, 0.1], [990, 0.1, 0.12]],
+      unlock: [[440, 0.08, 0.12], [660, 0.08, 0.12], [880, 0.14, 0.14]],
+      deny:   [[160, 0.16, 0.14]],
+      slide:  [[110, 0.25, 0.1]],
+      power:  [[220, 0.1, 0.1], [330, 0.1, 0.1], [440, 0.1, 0.1], [550, 0.25, 0.12]],
+    }[kind] || [];
+    let at = t;
+    for (const [freq, dur, vol] of tones) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = kind === 'deny' || kind === 'slide' ? 'sawtooth' : 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(at); o.stop(at + dur + 0.02);
+      at += dur * 0.9;
+    }
+  } catch (_) { /* 音は演出のみ */ }
+}
+
+// ================= UI =================
+const messageEl = document.getElementById('message');
+let messageTimer = null;
+function showMessage(text) {
+  messageEl.textContent = text;
+  messageEl.style.opacity = 1;
+  clearTimeout(messageTimer);
+  messageTimer = setTimeout(() => { messageEl.style.opacity = 0; }, 3800);
+}
+function updateInventory() {
+  const items = [];
+  if (state.keycard) items.push('🔑 カードキー');
+  if (state.fuse && !state.fuseInstalled) items.push('⚡ ヒューズ');
+  document.getElementById('inventory').innerHTML =
+    items.map(i => `<div class="item">${i}</div>`).join('');
+}
+const timerEl = document.getElementById('timer');
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// ================= 入力 =================
+const keys = new Set();
+addEventListener('keydown', e => {
+  keys.add(e.code);
+  if (e.code === 'KeyE' && !keypadOpen) doInteract();
+});
+addEventListener('keyup', e => keys.delete(e.code));
+
+const isTouch = matchMedia('(pointer: coarse)').matches;
+let pointerLocked = false;
+function lockPointer() {
+  renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
+}
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = document.pointerLockElement === renderer.domElement;
+  document.getElementById('resume').style.display =
+    (state.started && !state.cleared && !pointerLocked && !keypadOpen && !isTouch) ? 'block' : 'none';
+});
+addEventListener('mousemove', e => {
+  if (!pointerLocked) return;
+  player.yaw -= e.movementX * 0.0022;
+  player.pitch = THREE.MathUtils.clamp(player.pitch - e.movementY * 0.0022, -1.35, 1.35);
+});
+renderer.domElement.addEventListener('click', () => {
+  if (!state.started || state.cleared || keypadOpen) return;
+  if (!pointerLocked && !isTouch) { lockPointer(); return; }
+  if (pointerLocked) doInteract();
+});
+
+// タッチ操作: 左半分=移動スティック / 右半分=視点 / タップ=調べる
+const touchMove = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+const touchLook = { id: null, lx: 0, ly: 0, sx: 0, sy: 0, t: 0, moved: 0 };
+addEventListener('touchstart', e => {
+  if (!state.started || keypadOpen) return;
+  for (const t of e.changedTouches) {
+    if (t.clientX < innerWidth / 2 && touchMove.id === null) {
+      touchMove.id = t.identifier; touchMove.ox = t.clientX; touchMove.oy = t.clientY;
+      touchMove.dx = 0; touchMove.dy = 0;
+    } else if (touchLook.id === null) {
+      touchLook.id = t.identifier; touchLook.lx = t.clientX; touchLook.ly = t.clientY;
+      touchLook.sx = t.clientX; touchLook.sy = t.clientY;
+      touchLook.t = performance.now(); touchLook.moved = 0;
+    }
+  }
+}, { passive: true });
+addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchMove.id) {
+      touchMove.dx = THREE.MathUtils.clamp((t.clientX - touchMove.ox) / 60, -1, 1);
+      touchMove.dy = THREE.MathUtils.clamp((t.clientY - touchMove.oy) / 60, -1, 1);
+    } else if (t.identifier === touchLook.id) {
+      player.yaw -= (t.clientX - touchLook.lx) * 0.005;
+      player.pitch = THREE.MathUtils.clamp(player.pitch - (t.clientY - touchLook.ly) * 0.005, -1.35, 1.35);
+      touchLook.moved += Math.abs(t.clientX - touchLook.lx) + Math.abs(t.clientY - touchLook.ly);
+      touchLook.lx = t.clientX; touchLook.ly = t.clientY;
+    }
+  }
+}, { passive: true });
+addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchMove.id) { touchMove.id = null; touchMove.dx = 0; touchMove.dy = 0; }
+    else if (t.identifier === touchLook.id) {
+      if (performance.now() - touchLook.t < 300 && touchLook.moved < 12 && !keypadOpen) doInteract();
+      touchLook.id = null;
+    }
+  }
+}, { passive: true });
+
+// ================= レイキャスト・インタラクト =================
+const raycaster = new THREE.Raycaster();
+raycaster.far = 2.8;
+const hintEl = document.getElementById('hint');
+let hovered = null;
+const highlightMats = new Map();
+
+function setHighlight(inter, on) {
+  inter.root.traverse(o => {
+    if (!o.isMesh || !o.material || !o.material.emissive) return;
+    if (on) {
+      if (!highlightMats.has(o.material)) {
+        highlightMats.set(o.material, { hex: o.material.emissive.getHex(), i: o.material.emissiveIntensity });
+      }
+      o.material.emissive.setHex(0x3a6a99);
+      o.material.emissiveIntensity = 0.9;
+    } else {
+      const base = highlightMats.get(o.material);
+      if (base) { o.material.emissive.setHex(base.hex); o.material.emissiveIntensity = base.i; }
+    }
+  });
+}
+
+function pickInteractable() {
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const meshes = [];
+  for (const i of interactables) {
+    if (!i.enabled) continue;
+    i.root.traverse(o => { if (o.isMesh && o.visible) meshes.push(o); });
+  }
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (!hits.length) return null;
+  return interactables.find(i => i.id === hits[0].object.userData.interactId && i.enabled) || null;
+}
+
+function updateHover() {
+  const inter = (state.started && !state.cleared && !keypadOpen) ? pickInteractable() : null;
+  if (inter !== hovered) {
+    if (hovered) setHighlight(hovered, false);
+    if (inter) setHighlight(inter, true);
+    hovered = inter;
+    hintEl.textContent = inter ? `${inter.name} — ${inter.hint}` : '';
+  }
+}
+function doInteract() {
+  if (!state.started || state.cleared) return;
+  const inter = pickInteractable();
+  if (inter) inter.use();
+}
+
+// ================= 移動・衝突 =================
+const colliders = [
+  { get: () => ({ x: crate.position.x, z: crate.position.z, hx: 0.55, hz: 0.55 }) },
+  { get: () => ({ x: 4.5, z: 0.5, hx: 0.55, hz: 1.2 }) },   // デスク＋モニター
+  { get: () => ({ x: -4.7, z: 1.5, hx: 0.35, hz: 0.55 }) }, // ロッカー
+];
+
+function movePlayer(dt) {
+  if (!state.started || state.cleared || keypadOpen) return;
+  const speed = 3.1;
+  let ix = 0, iz = 0;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) iz -= 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) iz += 1;
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) ix -= 1;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) ix += 1;
+  ix += touchMove.dx; iz += touchMove.dy;
+  const len = Math.hypot(ix, iz);
+  if (len > 1) { ix /= len; iz /= len; }
+  const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+  player.pos.x += (ix * cos + iz * sin) * speed * dt;
+  player.pos.z += (-ix * sin + iz * cos) * speed * dt;
+
+  const p = player.pos, r = player.radius;
+  if (p.z > -3.6) {
+    // 室内
+    p.x = THREE.MathUtils.clamp(p.x, -5 + r + 0.1, 5 - r - 0.1);
+    p.z = Math.min(p.z, 4 - r - 0.1);
+    const inGap = state.doorOpen && Math.abs(p.x) < 0.6;
+    if (!inGap) p.z = Math.max(p.z, -4 + r + 0.1);
+  } else {
+    // 通路
+    p.x = THREE.MathUtils.clamp(p.x, -0.6, 0.6);
+    p.z = Math.max(p.z, -7.7);
+  }
+  // 家具との押し出し
+  for (const c of colliders) {
+    const b = c.get();
+    const minX = b.x - b.hx - r, maxX = b.x + b.hx + r;
+    const minZ = b.z - b.hz - r, maxZ = b.z + b.hz + r;
+    if (p.x > minX && p.x < maxX && p.z > minZ && p.z < maxZ) {
+      const pushL = p.x - minX, pushR = maxX - p.x;
+      const pushB = p.z - minZ, pushF = maxZ - p.z;
+      const m = Math.min(pushL, pushR, pushB, pushF);
+      if (m === pushL) p.x = minX;
+      else if (m === pushR) p.x = maxX;
+      else if (m === pushB) p.z = minZ;
+      else p.z = maxZ;
+    }
+  }
+  // クリア判定
+  if (p.z < -7.4 && !state.cleared) onClear();
+}
+
+// ================= 開始・クリア =================
+const startOverlay = document.getElementById('start-overlay');
+const bestKey = 'airlock-escape-best';
+{
+  const best = localStorage.getItem(bestKey);
+  if (best) {
+    const el = document.getElementById('best-line');
+    el.style.display = 'block';
+    el.textContent = `BEST TIME: ${fmtTime(Number(best))}`;
+  }
+}
+document.getElementById('start-btn').addEventListener('click', () => {
+  state.started = true;
+  state.startTime = performance.now();
+  startOverlay.classList.add('hidden');
+  if (!isTouch) lockPointer();
+  sfx('beep');
+  setTimeout(() => showMessage('……警報が止まった。非常灯だけが灯っている。ここから脱出しなければ。'), 600);
+});
+
+function onClear() {
+  state.cleared = true;
+  const ms = performance.now() - state.startTime;
+  const best = Number(localStorage.getItem(bestKey) || Infinity);
+  if (ms < best) localStorage.setItem(bestKey, Math.round(ms));
+  document.getElementById('clear-time').textContent =
+    `TIME: ${fmtTime(ms)}` + (ms < best ? '  — NEW RECORD!' : `   BEST: ${fmtTime(best)}`);
+  document.exitPointerLock?.();
+  sfx('power');
+  setTimeout(() => document.getElementById('clear-overlay').classList.remove('hidden'), 400);
+}
+
+// ================= メインループ =================
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (!state.power) {
+    emergencyLight.intensity = 11 + Math.sin(t * 2.4) * 5; // 非常灯の明滅
+    emergencyLight2.intensity = 5 + Math.sin(t * 2.4 + 1.5) * 2.5;
+  }
+  movePlayer(dt);
+  updateAnimations(dt);
+  updateHover();
+
+  if (state.started && !state.cleared) timerEl.textContent = fmtTime(performance.now() - state.startTime);
+
+  camera.position.copy(player.pos);
+  camera.rotation.set(0, 0, 0);
+  camera.rotateY(player.yaw);
+  camera.rotateX(player.pitch);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ================= テスト用フック =================
+window.__escape = {
+  state, code: () => CODE,
+  goto(id) {
+    const inter = getInteractable(id);
+    if (!inter) return false;
+    const box3 = new THREE.Box3().setFromObject(inter.root);
+    const c = box3.getCenter(new THREE.Vector3());
+    const dir = new THREE.Vector3(-c.x, 0, -c.z);
+    if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+    dir.normalize();
+    player.pos.set(c.x + dir.x * 1.6, 1.6, c.z + dir.z * 1.6);
+    const look = new THREE.Vector3().subVectors(c, player.pos);
+    player.yaw = Math.atan2(-look.x, -look.z);
+    player.pitch = Math.atan2(look.y, Math.hypot(look.x, look.z));
+    return true;
+  },
+  setPos(x, z) { player.pos.set(x, 1.6, z); },
+  interact: doInteract,
+};
+</script>
+</body>
+</html>
