@@ -33,6 +33,7 @@ python3 -m http.server 8000
 | [Star Runner](games/star-runner/) | 小惑星帯を突き抜ける 3D エンドレスランナー。キーボード / タッチ操作対応 | Three.js |
 | [Airlock Escape](games/airlock-escape/) | 電源が落ちた宇宙ステーションからの一人称視点 3D 脱出ゲーム。アイテム探索 → 電源復旧 → コード解読の謎解きチェーン | Three.js / Pointer Lock / WebAudio |
 | [Cargo Crane](games/cargo-crane/) | 旋回クレーンから貨物を落として積み上げる物理タワービルダー。剛体スタッキング・弾道予測マーカー・ワンボタン操作 | Three.js / cannon-es |
+| [Aurora Sea](games/aurora-sea/) | オーロラの海を駆けるゲートスラローム。Gerstner風の波・プロシージャル空・オーロラ・ポストプロセスブルームまで全て自作 GLSL | Three.js / 自作シェーダー |
 
 ## GitHub Pages の設定
 
