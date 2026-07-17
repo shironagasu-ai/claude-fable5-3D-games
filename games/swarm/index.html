@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Swarm — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas { display: block; cursor: crosshair; }
+  body { font-family: "Courier New", monospace; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px 20px; pointer-events: none; z-index: 10;
+    color: #9fdcff; text-shadow: 0 0 8px rgba(80, 180, 255, 0.8);
+  }
+  #hud .label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; }
+  #hud .value { font-size: 26px; font-weight: bold; }
+  #hud .right { text-align: right; }
+  #hud .mid { text-align: center; }
+  #fish.hurt { color: #ff9977; }
+  #pulse-ind {
+    margin-top: 6px; font-size: 11px; letter-spacing: 2px;
+    color: #7fffb0; text-shadow: 0 0 8px rgba(100, 255, 170, 0.8);
+  }
+  #pulse-ind.cd { color: #667788; }
+  #popup {
+    position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%);
+    font-size: 28px; font-weight: bold; letter-spacing: 4px;
+    color: #ff8877; text-shadow: 0 0 18px rgba(255, 120, 90, 0.9);
+    z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  #popup.show { opacity: 1; }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(3, 10, 22, 0.6), rgba(0, 0, 0, 0.9));
+    color: #cfeaff; z-index: 20; transition: opacity 0.35s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: clamp(30px, 7vw, 56px); letter-spacing: 10px;
+    color: #6fd8ff; text-shadow: 0 0 24px rgba(80, 200, 255, 0.9);
+  }
+  .overlay p { font-size: 14px; opacity: 0.85; letter-spacing: 1px; text-align: center; line-height: 1.9; }
+  .overlay .score-line { font-size: 20px; color: #ffd27f; text-shadow: 0 0 12px rgba(255, 190, 80, 0.8); }
+  .overlay button {
+    cursor: pointer; font-family: inherit; font-size: 16px; letter-spacing: 3px;
+    padding: 14px 42px; color: #001a24;
+    background: linear-gradient(180deg, #7fdcff, #2f9ac9);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(80, 200, 255, 0.55);
+  }
+  .overlay button:active { transform: scale(0.96); }
+  .overlay .back { font-size: 11px; opacity: 0.6; }
+  .overlay a { color: #9fdcff; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>
+    <div class="label">FISH</div>
+    <div class="value" id="fish">0</div>
+    <div id="pulse-ind">PULSE READY</div>
+  </div>
+  <div class="mid">
+    <div class="label">TIME</div>
+    <div class="value" id="time">75</div>
+  </div>
+  <div class="right">
+    <div class="label">BEST</div>
+    <div class="value" id="best">0</div>
+  </div>
+</div>
+<div id="popup"></div>
+
+<div class="overlay" id="start-overlay">
+  <h1>SWARM</h1>
+  <p>氷衛星エウロパの地下海。発光魚の群れに捕食者が迫る。<br>
+  「守護の光」を動かして捕食者を追い払い、75秒間 群れを守り抜け。<br><br>
+  操作: マウス / ドラッグ で光を移動<br>
+  クリック / スペース / タップ でパルス波（捕食者を吹き飛ばす）</p>
+  <div class="score-line" id="best-line" style="display:none"></div>
+  <button id="start-btn">START</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<div class="overlay hidden" id="over-overlay">
+  <h1>DAWN PATROL</h1>
+  <p>捕食者たちは深みへ帰っていった。</p>
+  <div class="score-line" id="final-line"></div>
+  <button onclick="location.reload()">RETRY</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ================= 描画セットアップ =================
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020a14);
+scene.fog = new THREE.FogExp2(0x020a14, 0.011);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
+camera.position.set(0, 16, 48);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0x1a3048, 1.2));
+const topLight = new THREE.DirectionalLight(0x4488bb, 0.7);
+topLight.position.set(0, 40, 10);
+scene.add(topLight);
+
+// 海底のシルエット岩
+{
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x06121e, roughness: 1 });
+  for (let i = 0; i < 9; i++) {
+    const h = 6 + Math.random() * 14;
+    const rock = new THREE.Mesh(new THREE.ConeGeometry(2.5 + Math.random() * 4, h, 6), rockMat);
+    rock.position.set((Math.random() - 0.5) * 80, -22 + h / 2 - 1, (Math.random() - 0.5) * 46);
+    rock.rotation.y = Math.random() * Math.PI;
+    scene.add(rock);
+  }
+}
+
+// マリンスノー
+const snow = (() => {
+  const M = 420;
+  const pos = new Float32Array(M * 3);
+  for (let i = 0; i < M; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 100;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 50;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0x6699bb, size: 0.16, transparent: true, opacity: 0.55, sizeAttenuation: true,
+  }));
+  scene.add(p);
+  return p;
+})();
+
+// ================= Boids（データ指向・空間ハッシュ） =================
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const N_TOTAL = isTouch ? 1200 : 2200;
+let alive = N_TOTAL;
+
+const px = new Float32Array(N_TOTAL), py = new Float32Array(N_TOTAL), pz = new Float32Array(N_TOTAL);
+const vx = new Float32Array(N_TOTAL), vy = new Float32Array(N_TOTAL), vz = new Float32Array(N_TOTAL);
+const scl = new Float32Array(N_TOTAL);
+
+const BOUND = { x: 38, y: 18, z: 24 };      // ソフト境界
+const CELL = 3.0;
+const GX = Math.ceil((BOUND.x * 2 + 12) / CELL);
+const GY = Math.ceil((BOUND.y * 2 + 12) / CELL);
+const GZ = Math.ceil((BOUND.z * 2 + 12) / CELL);
+const NCELLS = GX * GY * GZ;
+const cellStart = new Int32Array(NCELLS + 1);
+const cellEntries = new Int32Array(N_TOTAL);
+const boidCell = new Int32Array(N_TOTAL);
+
+function cellIndex(x, y, z) {
+  let cx = ((x + BOUND.x + 6) / CELL) | 0;
+  let cy = ((y + BOUND.y + 6) / CELL) | 0;
+  let cz = ((z + BOUND.z + 6) / CELL) | 0;
+  cx = cx < 0 ? 0 : cx >= GX ? GX - 1 : cx;
+  cy = cy < 0 ? 0 : cy >= GY ? GY - 1 : cy;
+  cz = cz < 0 ? 0 : cz >= GZ ? GZ - 1 : cz;
+  return (cz * GY + cy) * GX + cx;
+}
+
+for (let i = 0; i < N_TOTAL; i++) {
+  const r = 14 * Math.cbrt(Math.random());
+  const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+  px[i] = r * Math.sin(ph) * Math.cos(th);
+  py[i] = r * Math.cos(ph) * 0.6;
+  pz[i] = r * Math.sin(ph) * Math.sin(th) * 0.7;
+  const sp = 6 + Math.random() * 3;
+  const th2 = Math.random() * Math.PI * 2;
+  vx[i] = Math.cos(th2) * sp; vy[i] = (Math.random() - 0.5) * 2; vz[i] = Math.sin(th2) * sp;
+  scl[i] = 0.75 + Math.random() * 0.55;
+}
+
+function rebuildGrid() {
+  cellStart.fill(0);
+  for (let i = 0; i < alive; i++) {
+    const c = cellIndex(px[i], py[i], pz[i]);
+    boidCell[i] = c;
+    cellStart[c + 1]++;
+  }
+  for (let c = 0; c < NCELLS; c++) cellStart[c + 1] += cellStart[c];
+  const cursor = cellStart.slice(0, NCELLS);
+  for (let i = 0; i < alive; i++) cellEntries[cursor[boidCell[i]]++] = i;
+}
+
+// パラメータ
+const SPEED_MIN = 5, SPEED_MAX = 11, STEER = 28;
+const R_SEP = 1.5, R_ALI = 2.9, MAX_NB = 12;
+const W_SEP = 20, W_ALI = 3.2, W_COH = 2.0, W_FLEE = 42, W_LIGHT = 1.4;
+
+let simMs = 0; // 検証用: Boids 更新の所要時間 EMA
+
+function stepBoids(dt) {
+  const t0 = performance.now();
+  rebuildGrid();
+  const r2sep = R_SEP * R_SEP, r2ali = R_ALI * R_ALI;
+
+  for (let i = 0; i < alive; i++) {
+    const ix = px[i], iy = py[i], iz = pz[i];
+    let sepX = 0, sepY = 0, sepZ = 0;
+    let aliX = 0, aliY = 0, aliZ = 0;
+    let cohX = 0, cohY = 0, cohZ = 0;
+    let nb = 0;
+
+    const cx = ((ix + BOUND.x + 6) / CELL) | 0;
+    const cy = ((iy + BOUND.y + 6) / CELL) | 0;
+    const cz = ((iz + BOUND.z + 6) / CELL) | 0;
+    outer:
+    for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const gx = cx + dx, gy = cy + dy, gz = cz + dz;
+      if (gx < 0 || gx >= GX || gy < 0 || gy >= GY || gz < 0 || gz >= GZ) continue;
+      const c = (gz * GY + gy) * GX + gx;
+      for (let e = cellStart[c]; e < cellStart[c + 1]; e++) {
+        const j = cellEntries[e];
+        if (j === i) continue;
+        const ox = px[j] - ix, oy = py[j] - iy, oz = pz[j] - iz;
+        const d2 = ox * ox + oy * oy + oz * oz;
+        if (d2 > r2ali) continue;
+        if (d2 < r2sep && d2 > 1e-6) {
+          const inv = 1 / d2;
+          sepX -= ox * inv; sepY -= oy * inv; sepZ -= oz * inv;
+        }
+        aliX += vx[j]; aliY += vy[j]; aliZ += vz[j];
+        cohX += ox; cohY += oy; cohZ += oz;
+        if (++nb >= MAX_NB) break outer;
+      }
+    }
+
+    let fx = sepX * W_SEP, fy = sepY * W_SEP, fz = sepZ * W_SEP;
+    if (nb > 0) {
+      const inv = 1 / nb;
+      fx += (aliX * inv - vx[i]) * W_ALI * 0.2;
+      fy += (aliY * inv - vy[i]) * W_ALI * 0.2;
+      fz += (aliZ * inv - vz[i]) * W_ALI * 0.2;
+      fx += cohX * inv * W_COH; fy += cohY * inv * W_COH; fz += cohZ * inv * W_COH;
+    }
+
+    // 捕食者から逃げる
+    for (let p = 0; p < predators.length; p++) {
+      const pr = predators[p];
+      const ox = ix - pr.pos.x, oy = iy - pr.pos.y, oz = iz - pr.pos.z;
+      const d2 = ox * ox + oy * oy + oz * oz;
+      if (d2 < 49 && d2 > 1e-6) {
+        const inv = W_FLEE / (d2 + 4);
+        fx += ox * inv * 12; fy += oy * inv * 12; fz += oz * inv * 12;
+      }
+    }
+
+    // 守護の光へゆるく引き寄せ（近すぎると無効）
+    {
+      const ox = guardian.position.x - ix, oy = guardian.position.y - iy, oz = guardian.position.z - iz;
+      const d2 = ox * ox + oy * oy + oz * oz;
+      if (d2 < 400 && d2 > 16) {
+        const inv = W_LIGHT / Math.sqrt(d2);
+        fx += ox * inv; fy += oy * inv; fz += oz * inv;
+      }
+    }
+
+    // ソフト境界
+    if (ix > BOUND.x) fx -= (ix - BOUND.x) * 4; else if (ix < -BOUND.x) fx -= (ix + BOUND.x) * 4;
+    if (iy > BOUND.y) fy -= (iy - BOUND.y) * 4; else if (iy < -BOUND.y) fy -= (iy + BOUND.y) * 4;
+    if (iz > BOUND.z) fz -= (iz - BOUND.z) * 4; else if (iz < -BOUND.z) fz -= (iz + BOUND.z) * 4;
+
+    // 操舵力を制限して速度更新
+    const fmag = Math.sqrt(fx * fx + fy * fy + fz * fz);
+    if (fmag > STEER) { const s = STEER / fmag; fx *= s; fy *= s; fz *= s; }
+    vx[i] += fx * dt; vy[i] += fy * dt; vz[i] += fz * dt;
+    const sp = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i]);
+    if (sp > SPEED_MAX) { const s = SPEED_MAX / sp; vx[i] *= s; vy[i] *= s; vz[i] *= s; }
+    else if (sp < SPEED_MIN && sp > 1e-6) { const s = SPEED_MIN / sp; vx[i] *= s; vy[i] *= s; vz[i] *= s; }
+    px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
+  }
+  simMs = simMs * 0.9 + (performance.now() - t0) * 0.1;
+}
+
+// ================= 魚の描画（InstancedMesh・1ドローコール） =================
+const fishGeo = new THREE.ConeGeometry(0.14, 0.6, 5);
+fishGeo.rotateX(Math.PI / 2);
+const fishMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true });
+const fishMesh = new THREE.InstancedMesh(fishGeo, fishMat, N_TOTAL);
+fishMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+{
+  const c = new THREE.Color();
+  for (let i = 0; i < N_TOTAL; i++) {
+    c.setHSL(0.48 + Math.random() * 0.14, 0.9, 0.5 + Math.random() * 0.25);
+    fishMesh.setColorAt(i, c);
+  }
+}
+scene.add(fishMesh);
+
+const _m = new THREE.Matrix4();
+function syncFishMatrices() {
+  const e = _m.elements;
+  for (let i = 0; i < alive; i++) {
+    // 進行方向を向く正規直交基底を手組み（lookAt より軽い）
+    let fxv = vx[i], fyv = vy[i], fzv = vz[i];
+    let l = Math.sqrt(fxv * fxv + fyv * fyv + fzv * fzv) || 1;
+    fxv /= l; fyv /= l; fzv /= l;
+    let rxv = -fzv, ryv = 0, rzv = fxv; // up(0,1,0) × forward
+    l = Math.sqrt(rxv * rxv + rzv * rzv) || 1;
+    rxv /= l; rzv /= l;
+    const uxv = fyv * rzv - fzv * ryv, uyv = fzv * rxv - fxv * rzv, uzv = fxv * ryv - fyv * rxv;
+    const s = scl[i];
+    e[0] = rxv * s; e[1] = ryv * s; e[2] = rzv * s; e[3] = 0;
+    e[4] = uxv * s; e[5] = uyv * s; e[6] = uzv * s; e[7] = 0;
+    e[8] = fxv * s; e[9] = fyv * s; e[10] = fzv * s; e[11] = 0;
+    e[12] = px[i]; e[13] = py[i]; e[14] = pz[i]; e[15] = 1;
+    fishMesh.setMatrixAt(i, _m);
+  }
+  fishMesh.count = alive;
+  fishMesh.instanceMatrix.needsUpdate = true;
+}
+
+function killBoid(i) {
+  // swap-remove で常に先頭 alive 個が生存個体
+  const last = alive - 1;
+  if (i !== last) {
+    px[i] = px[last]; py[i] = py[last]; pz[i] = pz[last];
+    vx[i] = vx[last]; vy[i] = vy[last]; vz[i] = vz[last];
+    scl[i] = scl[last];
+    if (fishMesh.instanceColor) {
+      const a = fishMesh.instanceColor.array;
+      a[i * 3] = a[last * 3]; a[i * 3 + 1] = a[last * 3 + 1]; a[i * 3 + 2] = a[last * 3 + 2];
+      fishMesh.instanceColor.needsUpdate = true;
+    }
+  }
+  alive--;
+}
+
+// ================= 守護の光 =================
+const guardian = new THREE.Group();
+{
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xcfffee })
+  );
+  guardian.add(core);
+  const haloTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 4, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(180,255,230,0.9)');
+    grad.addColorStop(0.35, 'rgba(90,220,190,0.35)');
+    grad.addColorStop(1, 'rgba(60,200,170,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  })();
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  halo.scale.setScalar(7);
+  guardian.add(halo);
+  const light = new THREE.PointLight(0x9fffdd, 60, 45);
+  guardian.add(light);
+}
+guardian.position.set(0, 0, 18);
+scene.add(guardian);
+const guardianTarget = new THREE.Vector3(0, 0, 18);
+
+// パルス波
+const pulseMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 24, 16),
+  new THREE.MeshBasicMaterial({ color: 0x9fffdd, transparent: true, opacity: 0, wireframe: true, depthWrite: false })
+);
+scene.add(pulseMesh);
+const PULSE_CD = 4, PULSE_RANGE = 18;
+let pulseCd = 0, pulseAnim = 0;
+
+function firePulse() {
+  if (pulseCd > 0 || !state.started || state.over) return false;
+  pulseCd = PULSE_CD;
+  pulseAnim = 0.9;
+  pulseMesh.position.copy(guardian.position);
+  for (const pr of predators) {
+    const d = pr.pos.distanceTo(guardian.position);
+    if (d < PULSE_RANGE) {
+      const dir = pr.pos.clone().sub(guardian.position).normalize();
+      pr.vel.addScaledVector(dir, 38);
+      pr.stun = 1.6;
+      pr.state = 'stun';
+    }
+  }
+  sfx('pulse');
+  return true;
+}
+
+// ================= 捕食者 =================
+const predators = [];
+function makePredatorMesh() {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x131b26, roughness: 0.5, metalness: 0.5 });
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.8, 3.6, 7), bodyMat);
+  body.rotation.x = Math.PI / 2;
+  g.add(body);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 5), bodyMat);
+  tail.rotation.x = -Math.PI / 2;
+  tail.position.z = -2.2;
+  g.add(tail);
+  for (const sx of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.7), bodyMat);
+    fin.position.set(sx * 0.9, 0, 0.2);
+    fin.rotation.z = sx * -0.3;
+    g.add(fin);
+  }
+  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.3),
+    new THREE.MeshBasicMaterial({ color: 0xff3322 }));
+  eye.position.set(0, 0.25, 1.3);
+  g.add(eye);
+  return g;
+}
+
+function spawnPredator() {
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const mesh = makePredatorMesh();
+  const pos = new THREE.Vector3(side * (BOUND.x + 8), (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 30);
+  mesh.position.copy(pos);
+  scene.add(mesh);
+  predators.push({
+    mesh, pos, vel: new THREE.Vector3(-side * 8, 0, 0),
+    state: 'circle', stun: 0, retreat: 0, circleT: 0.8 + Math.random() * 1.2,
+    chargeT: 0, orbitDir: Math.random() < 0.5 ? -1 : 1,
+  });
+  showPopup('捕食者が現れた！');
+  sfx('warn');
+}
+
+// サメ型AI: 群れの周囲を旋回(予備動作) → 中心へ直線チャージして通り道を捕食 → 離脱
+const _centroid = new THREE.Vector3();
+function schoolCentroid() {
+  let cx = 0, cy = 0, cz = 0, n = 0;
+  for (let i = 0; i < alive; i += 8) { cx += px[i]; cy += py[i]; cz += pz[i]; n++; }
+  if (n > 0) _centroid.set(cx / n, cy / n, cz / n);
+  return _centroid;
+}
+
+function stepPredators(dt) {
+  const cen = schoolCentroid();
+  for (const pr of predators) {
+    const gd = pr.pos.distanceTo(guardian.position);
+
+    if (pr.state === 'stun') {
+      pr.stun -= dt;
+      pr.vel.multiplyScalar(1 - 1.6 * dt);
+      if (pr.stun <= 0) { pr.state = 'circle'; pr.circleT = 1.5; }
+    } else if (gd < 9) {
+      // 光から逃げる（最優先・チャージも中断）
+      pr.state = 'flee';
+      const dir = pr.pos.clone().sub(guardian.position).normalize();
+      pr.vel.addScaledVector(dir, 60 * dt);
+      clampSpeed(pr.vel, 16);
+    } else if (pr.state === 'flee') {
+      if (gd > 13) { pr.state = 'circle'; pr.circleT = 1.2 + Math.random(); }
+    } else if (pr.state === 'retreat') {
+      pr.retreat -= dt;
+      clampSpeed(pr.vel, 9);
+      if (pr.retreat <= 0) { pr.state = 'circle'; pr.circleT = 0.8 + Math.random() * 1.2; }
+    } else if (pr.state === 'charge') {
+      pr.chargeT -= dt;
+      // 直進チャージ: 口の通り道の魚をまとめて捕食
+      let eaten = 0;
+      for (let i = alive - 1; i >= 0 && pr.eaten < 20; i--) {
+        const dx = px[i] - pr.pos.x, dy = py[i] - pr.pos.y, dz = pz[i] - pr.pos.z;
+        if (dx * dx + dy * dy + dz * dz < 9.0) { killBoid(i); eaten++; pr.eaten++; }
+      }
+      if (eaten > 0) { sfx('eat'); hudHurt(); }
+      if (pr.chargeT <= 0 || pr.eaten >= 20) {
+        pr.state = 'retreat';
+        pr.retreat = 1.0;
+      }
+    } else {
+      // circle: 群れの周囲を旋回して間合いを計る
+      pr.circleT -= dt;
+      const toCen = cen.clone().sub(pr.pos);
+      const dist = toCen.length();
+      const radial = toCen.normalize();
+      const tangent = new THREE.Vector3(-radial.z * pr.orbitDir, 0, radial.x * pr.orbitDir);
+      const want = tangent.multiplyScalar(11).addScaledVector(radial, (dist - 16) * 0.8);
+      pr.vel.lerp(want, Math.min(1, 2.5 * dt));
+      clampSpeed(pr.vel, 12);
+      if (pr.circleT <= 0) {
+        // チャージ開始: 群れ中心のやや先へ向けて一直線
+        const aim = cen.clone();
+        aim.x += (Math.random() - 0.5) * 5;
+        aim.y += (Math.random() - 0.5) * 3;
+        aim.z += (Math.random() - 0.5) * 5;
+        pr.vel.copy(aim.sub(pr.pos).normalize().multiplyScalar(26));
+        pr.state = 'charge';
+        pr.chargeT = Math.max(1.3, pr.pos.distanceTo(cen) * 2 / 26);
+        pr.eaten = 0;
+      }
+    }
+
+    pr.pos.addScaledVector(pr.vel, dt);
+    // 境界
+    for (const [axis, lim] of [['x', BOUND.x + 10], ['y', BOUND.y + 6], ['z', BOUND.z + 8]]) {
+      if (pr.pos[axis] > lim) { pr.pos[axis] = lim; pr.vel[axis] *= -0.6; }
+      if (pr.pos[axis] < -lim) { pr.pos[axis] = -lim; pr.vel[axis] *= -0.6; }
+    }
+
+    // 見た目: 進行方向を向く
+    if (pr.vel.lengthSq() > 0.1) {
+      const look = pr.pos.clone().add(pr.vel);
+      pr.mesh.lookAt(look);
+    }
+    pr.mesh.position.copy(pr.pos);
+  }
+}
+function clampSpeed(v, max) {
+  const l = v.length();
+  if (l > max) v.multiplyScalar(max / l);
+}
+
+// ================= ゲーム状態 =================
+const GAME_LEN = 75;
+const state = { started: false, over: false, timeLeft: GAME_LEN };
+const bestKey = 'swarm-best';
+let best = Number(localStorage.getItem(bestKey) || 0);
+document.getElementById('best').textContent = best;
+if (best > 0) {
+  const el = document.getElementById('best-line');
+  el.style.display = 'block';
+  el.textContent = `BEST: ${best} SURVIVORS`;
+}
+const spawnTimes = [0.5, 15, 30, 45, 60];
+let spawnCursor = 0;
+
+// ================= 入力 =================
+const raycaster = new THREE.Raycaster();
+const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const ndc = new THREE.Vector2();
+let pointerDownAt = 0, pointerMoved = 0;
+
+function updateGuardianTarget(clientX, clientY) {
+  ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+  plane.constant = -guardianTarget.y; // y=guardianY の水平面
+  raycaster.setFromCamera(ndc, camera);
+  const hit = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(plane, hit)) {
+    guardianTarget.x = THREE.MathUtils.clamp(hit.x, -BOUND.x - 4, BOUND.x + 4);
+    guardianTarget.z = THREE.MathUtils.clamp(hit.z, -BOUND.z - 4, BOUND.z + 4);
+  }
+}
+addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') updateGuardianTarget(e.clientX, e.clientY);
+  else if (pointerDownAt) { pointerMoved += 1; updateGuardianTarget(e.clientX, e.clientY); }
+});
+addEventListener('pointerdown', e => {
+  if (e.target.closest('.overlay')) return;
+  pointerDownAt = performance.now(); pointerMoved = 0;
+  if (e.pointerType === 'mouse') firePulse();
+  else updateGuardianTarget(e.clientX, e.clientY);
+});
+addEventListener('pointerup', e => {
+  if (e.pointerType !== 'mouse' && pointerDownAt &&
+      performance.now() - pointerDownAt < 260 && pointerMoved < 6) firePulse();
+  pointerDownAt = 0;
+});
+addEventListener('keydown', e => { if (e.code === 'Space') firePulse(); });
+
+// ================= サウンド =================
+let audioCtx = null;
+function sfx(kind) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const tones = {
+      pulse: [[220, 0.1, 0.12], [440, 0.22, 0.1]],
+      warn:  [[330, 0.12, 0.1], [277, 0.2, 0.1]],
+      eat:   [[150, 0.08, 0.08]],
+      over:  [[523, 0.12, 0.1], [659, 0.12, 0.1], [784, 0.3, 0.12]],
+    }[kind] || [];
+    let at = t;
+    for (const [freq, dur, vol] of tones) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = kind === 'eat' ? 'triangle' : 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(at); o.stop(at + dur + 0.02);
+      at += dur * 0.85;
+    }
+  } catch (_) { /* 音は演出のみ */ }
+}
+
+// ================= UI =================
+let popupTimer = null;
+function showPopup(text) {
+  const el = document.getElementById('popup');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(popupTimer);
+  popupTimer = setTimeout(() => el.classList.remove('show'), 1300);
+}
+let hurtTimer = null;
+function hudHurt() {
+  const el = document.getElementById('fish');
+  el.classList.add('hurt');
+  clearTimeout(hurtTimer);
+  hurtTimer = setTimeout(() => el.classList.remove('hurt'), 400);
+}
+function updateHud() {
+  document.getElementById('fish').textContent = alive;
+  document.getElementById('time').textContent = Math.ceil(Math.max(0, state.timeLeft));
+  const pi = document.getElementById('pulse-ind');
+  if (pulseCd > 0) { pi.textContent = `PULSE ${pulseCd.toFixed(1)}s`; pi.classList.add('cd'); }
+  else { pi.textContent = 'PULSE READY'; pi.classList.remove('cd'); }
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  state.started = true;
+  document.getElementById('start-overlay').classList.add('hidden');
+  sfx('pulse');
+});
+
+function finish() {
+  state.over = true;
+  const pct = Math.round((alive / N_TOTAL) * 100);
+  if (alive > best) { best = alive; localStorage.setItem(bestKey, best); }
+  document.getElementById('final-line').textContent =
+    `SURVIVED: ${alive} / ${N_TOTAL} (${pct}%)   BEST: ${best}`;
+  sfx('over');
+  setTimeout(() => document.getElementById('over-overlay').classList.remove('hidden'), 900);
+}
+
+// ================= メインループ =================
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (state.started && !state.over) {
+    state.timeLeft -= dt;
+    if (state.timeLeft <= 0) { state.timeLeft = 0; finish(); }
+    while (spawnCursor < spawnTimes.length && GAME_LEN - state.timeLeft >= spawnTimes[spawnCursor]) {
+      spawnPredator();
+      spawnCursor++;
+    }
+    stepPredators(dt);
+    pulseCd = Math.max(0, pulseCd - dt);
+  }
+
+  stepBoids(dt);
+  syncFishMatrices();
+
+  // 守護の光: 高さは群れの重心へ自動追従
+  let cy = 0;
+  for (let i = 0; i < alive; i += 16) cy += py[i];
+  const samples = Math.ceil(alive / 16) || 1;
+  guardianTarget.y += ((cy / samples) - guardianTarget.y) * Math.min(1, 1.5 * dt);
+  guardian.position.lerp(guardianTarget, Math.min(1, 8 * dt));
+  guardian.children[1].scale.setScalar(6.4 + Math.sin(t * 5) * 0.8);
+
+  // パルス波エフェクト
+  if (pulseAnim > 0) {
+    pulseAnim -= dt;
+    const u = 1 - pulseAnim / 0.9;
+    pulseMesh.scale.setScalar(1 + u * PULSE_RANGE);
+    pulseMesh.material.opacity = 0.55 * (1 - u);
+  } else pulseMesh.material.opacity = 0;
+
+  // マリンスノー沈降
+  {
+    const arr = snow.geometry.attributes.position;
+    for (let i = 0; i < arr.count; i++) {
+      let y = arr.getY(i) - dt * 0.4;
+      if (y < -25) y = 25;
+      arr.setY(i, y);
+    }
+    arr.needsUpdate = true;
+  }
+
+  // カメラの微揺れ
+  camera.position.x = Math.sin(t * 0.11) * 3;
+  camera.position.y = 16 + Math.sin(t * 0.07) * 1.5;
+  camera.lookAt(0, 0, 0);
+
+  updateHud();
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ================= テスト用フック =================
+window.__swarm = {
+  state, total: N_TOTAL,
+  alive: () => alive,
+  simMs: () => simMs,
+  predators: () => predators.map(p => ({ x: p.pos.x, y: p.pos.y, z: p.pos.z, state: p.state })),
+  setGuardian(x, y, z) { guardianTarget.set(x, y, z); guardian.position.set(x, y, z); },
+  pulse: firePulse,
+  pulseCd: () => pulseCd,
+  setTimeLeft(s) { state.timeLeft = s; },
+};
+</script>
+</body>
+</html>
