@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Aurora Sea — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas { display: block; }
+  body { font-family: "Courier New", monospace; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px 20px; pointer-events: none; z-index: 10;
+    color: #9fdcff; text-shadow: 0 0 8px rgba(80, 180, 255, 0.8);
+  }
+  #hud .label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; }
+  #hud .value { font-size: 26px; font-weight: bold; }
+  #hud .right { text-align: right; }
+  #hud .mid { text-align: center; }
+  #time.low { color: #ff8877; text-shadow: 0 0 10px rgba(255, 110, 80, 0.9); }
+  #popup {
+    position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%);
+    font-size: 30px; font-weight: bold; letter-spacing: 4px;
+    color: #7fffb0; text-shadow: 0 0 18px rgba(100, 255, 170, 0.9);
+    z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.25s;
+  }
+  #popup.show { opacity: 1; }
+  #popup.bad { color: #ff8877; text-shadow: 0 0 18px rgba(255, 120, 90, 0.9); }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(4, 8, 20, 0.55), rgba(0, 0, 0, 0.88));
+    color: #cfeaff; z-index: 20; transition: opacity 0.35s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: clamp(30px, 7vw, 56px); letter-spacing: 8px;
+    color: #8fffc9; text-shadow: 0 0 24px rgba(90, 255, 180, 0.85);
+  }
+  .overlay p { font-size: 14px; opacity: 0.85; letter-spacing: 1px; text-align: center; line-height: 1.9; }
+  .overlay .score-line { font-size: 20px; color: #ffd27f; text-shadow: 0 0 12px rgba(255, 190, 80, 0.8); }
+  .overlay button {
+    cursor: pointer; font-family: inherit; font-size: 16px; letter-spacing: 3px;
+    padding: 14px 42px; color: #00241a;
+    background: linear-gradient(180deg, #8fffce, #2fb98a);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(90, 255, 190, 0.5);
+  }
+  .overlay button:active { transform: scale(0.96); }
+  .overlay .back { font-size: 11px; opacity: 0.6; }
+  .overlay a { color: #9fdcff; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>
+    <div class="label">GATES</div>
+    <div class="value" id="score">0</div>
+  </div>
+  <div class="mid">
+    <div class="label">TIME</div>
+    <div class="value" id="time">40.0</div>
+  </div>
+  <div class="right">
+    <div class="label">BEST</div>
+    <div class="value" id="best">0</div>
+  </div>
+</div>
+<div id="popup"></div>
+
+<div class="overlay" id="start-overlay">
+  <h1>AURORA SEA</h1>
+  <p>オーロラの下、異星の夜の海を駆け抜けろ。<br>
+  光るゲートをくぐるたびに残り時間が延びる。<br><br>
+  操作: ← → / A D / 画面の左右タッチ でステア<br>
+  ボートは自動で前進する。</p>
+  <div class="score-line" id="best-line" style="display:none"></div>
+  <button id="start-btn">START</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<div class="overlay hidden" id="over-overlay">
+  <h1>RUN COMPLETE</h1>
+  <div class="score-line" id="final-line"></div>
+  <button onclick="location.reload()">RETRY</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ================= 波の定義（JS と GLSL で共有） =================
+// 方向は正規化して埋め込む。k = 2π/λ
+const WAVES = [
+  { dx: 1.0, dz: 0.25, A: 0.5, L: 34, w: 1.05 },
+  { dx: 0.8, dz: -0.6, A: 0.28, L: 18, w: 1.3 },
+  { dx: -0.37, dz: 0.93, A: 0.16, L: 9, w: 1.7 },
+  { dx: 0.7, dz: 0.7, A: 0.1, L: 5.2, w: 2.2 },
+  { dx: -0.93, dz: -0.37, A: 0.06, L: 2.8, w: 2.9 },
+].map(v => {
+  const len = Math.hypot(v.dx, v.dz);
+  return { dx: v.dx / len, dz: v.dz / len, A: v.A, k: (Math.PI * 2) / v.L, w: v.w };
+});
+
+function waveHeightJS(x, z, t) {
+  let h = 0;
+  for (const v of WAVES) h += v.A * Math.sin((v.dx * x + v.dz * z) * v.k + t * v.w);
+  return h;
+}
+function waveGradJS(x, z, t) {
+  let gx = 0, gz = 0;
+  for (const v of WAVES) {
+    const c = v.A * v.k * Math.cos((v.dx * x + v.dz * z) * v.k + t * v.w);
+    gx += c * v.dx; gz += c * v.dz;
+  }
+  return { gx, gz };
+}
+const glslWaves = WAVES.map(v =>
+  `h += ${v.A.toFixed(4)} * sin(dot(vec2(${v.dx.toFixed(4)}, ${v.dz.toFixed(4)}), p) * ${v.k.toFixed(5)} + t * ${v.w.toFixed(3)});
+   grad += ${(v.A).toFixed(4)} * ${v.k.toFixed(5)} * cos(dot(vec2(${v.dx.toFixed(4)}, ${v.dz.toFixed(4)}), p) * ${v.k.toFixed(5)} + t * ${v.w.toFixed(3)}) * vec2(${v.dx.toFixed(4)}, ${v.dz.toFixed(4)});`
+).join('\n');
+
+// ================= 共通 GLSL（ノイズ） =================
+const glslNoise = /* glsl */`
+float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i), b = hash21(i + vec2(1, 0)), c = hash21(i + vec2(0, 1)), d = hash21(i + vec2(1, 1));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { v += a * vnoise(p); p *= 2.03; a *= 0.5; }
+  return v;
+}
+vec3 skyGradient(float el) {
+  vec3 hor = vec3(0.05, 0.10, 0.17);
+  vec3 zen = vec3(0.004, 0.008, 0.028);
+  return mix(hor, zen, smoothstep(0.0, 0.55, el));
+}
+vec3 auroraColor(float el) {
+  return mix(vec3(0.06, 0.85, 0.38), vec3(0.38, 0.18, 0.85), smoothstep(0.12, 0.7, el));
+}
+float auroraBand(vec3 d, float t) {
+  // 方位角の不連続(±π)はカメラが常に -z を向くため +z 側(背後)に置く
+  float az = atan(d.x, -d.z);
+  float band = smoothstep(0.06, 0.28, d.y) * (1.0 - smoothstep(0.5, 0.95, d.y));
+  float n1 = fbm(vec2(az * 2.0 + t * 0.03, d.y * 1.3 - t * 0.05));
+  float curt = smoothstep(0.34, 0.82, n1);
+  float rays = 0.55 + 0.45 * sin(az * 40.0 + n1 * 14.0 + t * 0.35);
+  return band * curt * rays;
+}
+`;
+
+const MOON_DIR = new THREE.Vector3(-0.42, 0.42, -0.8).normalize();
+
+// ================= レンダラ =================
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // 最終ガンマは合成パスで行う
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(66, window.innerWidth / window.innerHeight, 0.1, 900);
+
+const uTime = { value: 0 };
+const uBoat = { value: new THREE.Vector3(0, 0, 0) };
+
+// ================= 空ドーム =================
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: { uTime, uMoonDir: { value: MOON_DIR } },
+  depthWrite: false,
+  side: THREE.BackSide,
+  vertexShader: /* glsl */`
+    varying vec3 vDir;
+    void main() {
+      vDir = position;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform float uTime;
+    uniform vec3 uMoonDir;
+    varying vec3 vDir;
+    ${glslNoise}
+    void main() {
+      vec3 d = normalize(vDir);
+      vec3 col = skyGradient(max(d.y, 0.0));
+      // 水平線下は海のフォグ色(=地平色)から滑らかに沈める
+      if (d.y < 0.0) col = mix(skyGradient(0.0), vec3(0.02, 0.04, 0.07), smoothstep(0.0, -0.25, d.y));
+
+      // 星
+      vec2 suv = vec2(atan(d.x, -d.z) * 3.0, d.y * 6.0) * 26.0;
+      vec2 id = floor(suv), gv = fract(suv) - 0.5;
+      float rn = hash21(id);
+      vec2 off = (vec2(hash21(id + 7.0), hash21(id + 13.0)) - 0.5) * 0.7;
+      float star = smoothstep(0.09, 0.0, length(gv - off)) * step(0.9, rn);
+      star *= 0.55 + 0.45 * sin(uTime * 1.7 + rn * 44.0);
+      col += vec3(0.9, 0.95, 1.1) * star * smoothstep(0.02, 0.22, d.y);
+
+      // オーロラ
+      float aur = auroraBand(d, uTime);
+      col += auroraColor(d.y) * aur * 1.7;
+
+      // 月と暈
+      float mdot = dot(d, uMoonDir);
+      float disc = smoothstep(0.99930, 0.99945, mdot);
+      float surf = 0.75 + 0.35 * vnoise(d.xy * 160.0);
+      col += vec3(1.35, 1.42, 1.5) * disc * surf;
+      col += vec3(0.35, 0.5, 0.7) * pow(max(mdot, 0.0), 220.0) * 0.9;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(600, 40, 24), skyMat);
+sky.frustumCulled = false;
+sky.renderOrder = -1;
+scene.add(sky);
+
+// ================= 海面 =================
+const oceanMat = new THREE.ShaderMaterial({
+  uniforms: { uTime, uMoonDir: { value: MOON_DIR }, uBoat },
+  vertexShader: /* glsl */`
+    uniform float uTime;
+    varying vec3 vWorld;
+    varying vec3 vNormal;
+    varying float vH;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vec2 p = wp.xz;
+      float t = uTime;
+      float h = 0.0;
+      vec2 grad = vec2(0.0);
+      ${glslWaves}
+      wp.y += h;
+      vWorld = wp.xyz;
+      vNormal = normalize(vec3(-grad.x, 1.0, -grad.y));
+      vH = h;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform float uTime;
+    uniform vec3 uMoonDir;
+    uniform vec3 uBoat;
+    varying vec3 vWorld;
+    varying vec3 vNormal;
+    varying float vH;
+    ${glslNoise}
+    vec3 cheapSky(vec3 d, float t) {
+      vec3 col = skyGradient(max(d.y, 0.0));
+      float aur = auroraBand(d, t);
+      col += auroraColor(max(d.y, 0.0)) * aur * 1.35;
+      return col;
+    }
+    void main() {
+      vec3 V = normalize(cameraPosition - vWorld);
+      // ディテール法線（ノイズ勾配）
+      vec2 np = vWorld.xz * 1.3 + uTime * 0.35;
+      float e = 0.09;
+      float n0 = vnoise(np);
+      vec2 dn = vec2(vnoise(np + vec2(e, 0.0)) - n0, vnoise(np + vec2(0.0, e)) - n0) / e;
+      vec3 N = normalize(vNormal + vec3(-dn.x, 0.0, -dn.y) * 0.10);
+
+      // フレネルで空を映す
+      float F = 0.025 + 0.975 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+      vec3 refl = reflect(-V, N);
+      refl.y = abs(refl.y);
+      vec3 skyC = cheapSky(refl, uTime);
+
+      // 水の地色（波高でわずかに明るく）
+      vec3 water = vec3(0.012, 0.05, 0.075) + vH * vec3(0.012, 0.05, 0.045);
+
+      vec3 col = mix(water, skyC, F);
+
+      // 月のスペキュラ＋グリッター
+      vec3 H = normalize(V + uMoonDir);
+      float spec = pow(max(dot(N, H), 0.0), 420.0);
+      float glit = 0.6 + 0.9 * vnoise(vWorld.xz * 5.0 + uTime * 1.4);
+      col += vec3(0.9, 1.0, 1.1) * spec * glit * 1.5;
+
+      // 波頭の泡
+      float foamN = vnoise(vWorld.xz * 2.6 + uTime * 0.6);
+      float foam = smoothstep(0.62, 0.95, vH / 1.05 + foamN * 0.25 - 0.12);
+
+      // ボートの航跡と船首の泡
+      vec2 rel = vWorld.xz - uBoat.xz;
+      float behind = rel.y; // ボートは -z へ進む → 後方は +z
+      float wake = step(0.0, behind) * (1.0 - smoothstep(0.0, 17.0, behind))
+                 * (1.0 - smoothstep(0.35 + behind * 0.10, 0.9 + behind * 0.16, abs(rel.x)))
+                 * (0.5 + 0.5 * vnoise(vWorld.xz * 2.4 + uTime * 1.2));
+      float bow = smoothstep(1.7, 0.55, length(rel));
+      foam = max(foam, max(wake * 0.85, bow * 0.6));
+      col = mix(col, vec3(0.75, 0.85, 0.9), foam * 0.75);
+
+      // 水平線フォグ（空の地平色へ溶かす）
+      float dist = length(vWorld - cameraPosition);
+      col = mix(col, skyGradient(0.0), smoothstep(60.0, 210.0, dist));
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+const ocean = new THREE.Mesh(new THREE.PlaneGeometry(460, 460, 150, 150), oceanMat);
+ocean.rotation.x = -Math.PI / 2;
+scene.add(ocean);
+
+// ================= ボート =================
+scene.add(new THREE.AmbientLight(0x334455, 1.6));
+const moonLight = new THREE.DirectionalLight(0xbdd4ff, 1.6);
+moonLight.position.copy(MOON_DIR.clone().multiplyScalar(30));
+scene.add(moonLight);
+
+const boat = new THREE.Group();
+{
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x30414f, roughness: 0.45, metalness: 0.55 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 2.2, 1.6) });
+  const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 2.4, 6, 10), hullMat);
+  hull.rotation.x = Math.PI / 2;
+  hull.scale.set(1, 1, 0.55);
+  boat.add(hull);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.3, 1.7), hullMat);
+  deck.position.set(0, 0.28, 0.25);
+  boat.add(deck);
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x88ddff, roughness: 0.15, metalness: 0.2, emissive: 0x113344 })
+  );
+  canopy.scale.set(1, 0.8, 1.3);
+  canopy.position.set(0, 0.44, 0.1);
+  boat.add(canopy);
+  for (const sx of [-0.5, 0.5]) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 2.6), glowMat);
+    strip.position.set(sx, 0.14, 0.1);
+    boat.add(strip);
+  }
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.14), glowMat);
+  tail.position.set(0, 0.1, 1.55);
+  boat.add(tail);
+}
+scene.add(boat);
+
+// ================= ゲート =================
+const gateMat = new THREE.ShaderMaterial({
+  uniforms: { uTime },
+  vertexShader: /* glsl */`
+    varying vec3 vWorld;
+    varying vec3 vN;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorld = wp.xyz;
+      vN = normalize(mat3(modelMatrix) * normal);
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform float uTime;
+    varying vec3 vWorld;
+    varying vec3 vN;
+    ${glslNoise}
+    void main() {
+      vec3 V = normalize(cameraPosition - vWorld);
+      float rim = pow(1.0 - abs(dot(normalize(vN), V)), 1.4);
+      float pulse = 0.75 + 0.45 * sin(uTime * 4.0 + vWorld.y * 2.2);
+      vec3 col = mix(vec3(0.1, 1.5, 1.1), vec3(1.6, 1.9, 2.2), rim) * pulse;
+      float dist = length(vWorld - cameraPosition);
+      col = mix(col, skyGradient(0.0), smoothstep(60.0, 210.0, dist));
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+const GATE_R = 2.3;
+const gateGeo = new THREE.TorusGeometry(GATE_R, 0.16, 10, 40);
+const gates = []; // { mesh, x, z, resolved }
+let gateSerial = 0;
+let lastGateX = 0;
+
+function spawnGate(z) {
+  gateSerial++;
+  const spread = Math.min(4 + gateSerial * 0.8, 13);
+  lastGateX = THREE.MathUtils.clamp(lastGateX + (Math.random() * 2 - 1) * spread, -14, 14);
+  const mesh = new THREE.Mesh(gateGeo, gateMat);
+  mesh.position.set(lastGateX, 0, z);
+  scene.add(mesh);
+  gates.push({ mesh, x: lastGateX, z, resolved: false });
+}
+
+// ================= 自前ブルーム合成 =================
+function makeRT(w, h, depth) {
+  return new THREE.WebGLRenderTarget(w, h, {
+    type: THREE.HalfFloatType,
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    depthBuffer: depth,
+  });
+}
+let rtScene, rtA, rtB;
+function allocRTs() {
+  const w = renderer.domElement.width, h = renderer.domElement.height;
+  rtScene?.dispose(); rtA?.dispose(); rtB?.dispose();
+  rtScene = makeRT(w, h, true);
+  rtA = makeRT(w >> 2, h >> 2, false);
+  rtB = makeRT(w >> 2, h >> 2, false);
+}
+allocRTs();
+
+const postScene = new THREE.Scene();
+const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+postScene.add(postQuad);
+const postVert = /* glsl */`
+  varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+const thresholdMat = new THREE.ShaderMaterial({
+  uniforms: { tSrc: { value: null } },
+  vertexShader: postVert,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tSrc;
+    varying vec2 vUv;
+    void main() {
+      vec3 c = texture2D(tSrc, vUv).rgb;
+      gl_FragColor = vec4(max(c - 0.72, 0.0), 1.0);
+    }
+  `,
+});
+const blurMat = new THREE.ShaderMaterial({
+  uniforms: { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } },
+  vertexShader: postVert,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tSrc;
+    uniform vec2 uDir;
+    varying vec2 vUv;
+    void main() {
+      vec3 c = texture2D(tSrc, vUv).rgb * 0.227;
+      c += (texture2D(tSrc, vUv + uDir * 1.38).rgb + texture2D(tSrc, vUv - uDir * 1.38).rgb) * 0.316;
+      c += (texture2D(tSrc, vUv + uDir * 3.23).rgb + texture2D(tSrc, vUv - uDir * 3.23).rgb) * 0.070;
+      gl_FragColor = vec4(c, 1.0);
+    }
+  `,
+});
+const compositeMat = new THREE.ShaderMaterial({
+  uniforms: { tScene: { value: null }, tBloom: { value: null } },
+  vertexShader: postVert,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tScene;
+    uniform sampler2D tBloom;
+    varying vec2 vUv;
+    void main() {
+      vec3 col = texture2D(tScene, vUv).rgb + texture2D(tBloom, vUv).rgb * 1.25;
+      col = col / (col + 0.55) * 1.28;              // 簡易トーンマップ
+      col = pow(col, vec3(1.0 / 2.2));              // ガンマ
+      float vig = 1.0 - 0.32 * pow(length(vUv - 0.5) * 1.35, 2.4);
+      gl_FragColor = vec4(col * vig, 1.0);
+    }
+  `,
+});
+function renderPass(mat, target) {
+  postQuad.material = mat;
+  renderer.setRenderTarget(target);
+  renderer.render(postScene, postCam);
+}
+function renderFrame() {
+  renderer.setRenderTarget(rtScene);
+  renderer.render(scene, camera);
+  thresholdMat.uniforms.tSrc.value = rtScene.texture;
+  renderPass(thresholdMat, rtA);
+  blurMat.uniforms.tSrc.value = rtA.texture;
+  blurMat.uniforms.uDir.value.set(1 / rtA.width, 0);
+  renderPass(blurMat, rtB);
+  blurMat.uniforms.tSrc.value = rtB.texture;
+  blurMat.uniforms.uDir.value.set(0, 1 / rtA.height);
+  renderPass(blurMat, rtA);
+  compositeMat.uniforms.tScene.value = rtScene.texture;
+  compositeMat.uniforms.tBloom.value = rtA.texture;
+  renderPass(compositeMat, null);
+}
+
+// ================= ゲーム状態 =================
+const state = {
+  started: false, over: false,
+  score: 0, missed: 0, timeLeft: 40,
+};
+const bestKey = 'aurora-sea-best';
+let best = Number(localStorage.getItem(bestKey) || 0);
+document.getElementById('best').textContent = best;
+if (best > 0) {
+  const el = document.getElementById('best-line');
+  el.style.display = 'block';
+  el.textContent = `BEST: ${best} GATES`;
+}
+
+const boatState = { x: 0, z: 0, steer: 0 };
+function boatSpeed() { return Math.min(14 + state.score * 0.6, 26); }
+
+// ================= 入力 =================
+const keys = new Set();
+addEventListener('keydown', e => keys.add(e.code));
+addEventListener('keyup', e => keys.delete(e.code));
+let touchSteer = 0;
+addEventListener('pointerdown', e => {
+  if (!state.started || e.target.closest('.overlay')) return;
+  touchSteer = e.clientX < innerWidth / 2 ? -1 : 1;
+});
+addEventListener('pointerup', () => { touchSteer = 0; });
+
+// ================= サウンド =================
+let audioCtx = null, engineGain = null;
+function initEngine() {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const o1 = audioCtx.createOscillator();
+    o1.type = 'sawtooth'; o1.frequency.value = 52;
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 220;
+    engineGain = audioCtx.createGain();
+    engineGain.gain.value = 0.035;
+    o1.connect(lp).connect(engineGain).connect(audioCtx.destination);
+    o1.start();
+  } catch (_) { /* 音は演出のみ */ }
+}
+function sfx(kind) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const tones = {
+      gate: [[660, 0.07, 0.1], [990, 0.07, 0.1], [1320, 0.12, 0.12]],
+      miss: [[220, 0.18, 0.12]],
+      over: [[440, 0.14, 0.11], [330, 0.14, 0.11], [220, 0.35, 0.13]],
+    }[kind] || [];
+    let at = t;
+    for (const [freq, dur, vol] of tones) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = kind === 'miss' ? 'triangle' : 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(at); o.stop(at + dur + 0.02);
+      at += dur * 0.85;
+    }
+  } catch (_) { /* 音は演出のみ */ }
+}
+
+// ================= UI =================
+let popupTimer = null;
+function showPopup(text, bad = false) {
+  const el = document.getElementById('popup');
+  el.textContent = text;
+  el.classList.toggle('bad', bad);
+  el.classList.add('show');
+  clearTimeout(popupTimer);
+  popupTimer = setTimeout(() => el.classList.remove('show'), 800);
+}
+function updateHud() {
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('best').textContent = Math.max(best, state.score);
+  const timeEl = document.getElementById('time');
+  timeEl.textContent = Math.max(0, state.timeLeft).toFixed(1);
+  timeEl.classList.toggle('low', state.timeLeft < 10);
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  state.started = true;
+  document.getElementById('start-overlay').classList.add('hidden');
+  initEngine();
+  sfx('gate');
+});
+
+function finish() {
+  state.over = true;
+  if (engineGain) engineGain.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + 0.6);
+  if (state.score > best) { best = state.score; localStorage.setItem(bestKey, best); }
+  document.getElementById('final-line').textContent =
+    `GATES: ${state.score}   MISS: ${state.missed}   BEST: ${best}`;
+  sfx('over');
+  setTimeout(() => document.getElementById('over-overlay').classList.remove('hidden'), 900);
+}
+
+// 初期ゲート
+for (let i = 1; i <= 6; i++) spawnGate(-70 * i);
+
+// ================= メインループ =================
+const clock = new THREE.Clock();
+let lastWaveSample = { h: 0, boatBaseY: 0 };
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  uTime.value = clock.elapsedTime;
+  const t = uTime.value;
+
+  if (state.started && !state.over) {
+    state.timeLeft -= dt;
+    if (state.timeLeft <= 0) { state.timeLeft = 0; finish(); }
+
+    // ステア
+    let steer = touchSteer;
+    if (keys.has('ArrowLeft') || keys.has('KeyA')) steer = -1;
+    if (keys.has('ArrowRight') || keys.has('KeyD')) steer = 1;
+    boatState.steer += (steer - boatState.steer) * Math.min(1, 6 * dt);
+    boatState.x = THREE.MathUtils.clamp(boatState.x + boatState.steer * 11 * dt, -16, 16);
+    boatState.z -= boatSpeed() * dt;
+
+    // ゲート判定（ボートが z を跨いだ瞬間）
+    while (gates.length && gates[0].z >= boatState.z) {
+      const g = gates[0];
+      if (Math.abs(boatState.x - g.x) < GATE_R - 0.35) {
+        state.score++;
+        state.timeLeft = Math.min(state.timeLeft + 6, 99);
+        showPopup('+6.0s');
+        sfx('gate');
+      } else {
+        state.missed++;
+        showPopup('MISS', true);
+        sfx('miss');
+      }
+      scene.remove(g.mesh);
+      gates.shift();
+      spawnGate(gates[gates.length - 1].z - 70);
+    }
+    updateHud();
+  }
+
+  // ボートの浮力・姿勢（GLSL と同じ波関数を JS で評価）
+  const h = waveHeightJS(boatState.x, boatState.z, t);
+  const grad = waveGradJS(boatState.x, boatState.z, t);
+  boat.position.set(boatState.x, h + 0.35, boatState.z);
+  boat.rotation.z = -boatState.steer * 0.4 + grad.gx * 0.5;
+  boat.rotation.x = -grad.gz * 0.6;
+  boat.rotation.y = -boatState.steer * 0.18;
+  lastWaveSample = { h, boatBaseY: boat.position.y - 0.35 };
+  uBoat.value.copy(boat.position);
+
+  if (engineGain && audioCtx) engineGain.gain.value = 0.028 + boatSpeed() * 0.0007;
+
+  // ゲートを波に浮かせる
+  for (const g of gates) {
+    g.mesh.position.y = waveHeightJS(g.x, g.z, t) + 1.35;
+    g.mesh.rotation.z = Math.sin(t * 0.8 + g.z) * 0.06;
+  }
+
+  // 海面と空はボート/カメラに追従
+  ocean.position.set(boatState.x, 0, boatState.z);
+  sky.position.copy(camera.position);
+
+  // チェイスカメラ
+  const camPos = new THREE.Vector3(boatState.x * 0.85, boat.position.y + 3.1, boatState.z + 8.4);
+  camera.position.lerp(camPos, state.started ? Math.min(1, 4.5 * dt) : 1);
+  camera.lookAt(boatState.x, boat.position.y + 0.8, boatState.z - 14);
+  camera.rotation.z += boatState.steer * -0.03;
+
+  renderFrame();
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  allocRTs();
+});
+
+// ================= テスト用フック =================
+window.__aurora = {
+  state,
+  boat: () => ({ x: boatState.x, y: boat.position.y, z: boatState.z }),
+  waveSync: () => Math.abs(lastWaveSample.boatBaseY - lastWaveSample.h),
+  nextGate: () => gates[0] ? { x: gates[0].x, z: gates[0].z } : null,
+  setBoatX(x) { boatState.x = x; },
+  setTimeLeft(s) { state.timeLeft = s; },
+};
+</script>
+</body>
+</html>

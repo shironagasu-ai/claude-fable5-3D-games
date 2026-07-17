@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cargo Crane — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas { display: block; }
+  body { font-family: "Courier New", monospace; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px 20px; pointer-events: none; z-index: 10;
+    color: #9fdcff; text-shadow: 0 0 8px rgba(80, 180, 255, 0.8);
+  }
+  #hud .label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; }
+  #hud .value { font-size: 26px; font-weight: bold; }
+  #hud .right { text-align: right; }
+  #hud .mid { text-align: center; }
+  #lives { font-size: 18px; letter-spacing: 4px; margin-top: 4px; }
+  #popup {
+    position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%) scale(1);
+    font-size: 34px; font-weight: bold; letter-spacing: 4px;
+    color: #7fffb0; text-shadow: 0 0 18px rgba(100, 255, 170, 0.9);
+    z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.25s, transform 0.25s;
+  }
+  #popup.show { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  #popup.bad { color: #ff8877; text-shadow: 0 0 18px rgba(255, 120, 90, 0.9); }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(5, 8, 18, 0.6), rgba(0, 0, 0, 0.88));
+    color: #cfeaff; z-index: 20; transition: opacity 0.35s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: clamp(30px, 7vw, 56px); letter-spacing: 8px;
+    color: #7fd0ff; text-shadow: 0 0 24px rgba(80, 180, 255, 0.9);
+  }
+  .overlay p { font-size: 14px; opacity: 0.85; letter-spacing: 1px; text-align: center; line-height: 1.9; }
+  .overlay .score-line { font-size: 20px; color: #ffd27f; text-shadow: 0 0 12px rgba(255, 190, 80, 0.8); }
+  .overlay button {
+    cursor: pointer; font-family: inherit; font-size: 16px; letter-spacing: 3px;
+    padding: 14px 42px; color: #001624;
+    background: linear-gradient(180deg, #8fd8ff, #3aa0e0);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(80, 180, 255, 0.55);
+  }
+  .overlay button:active { transform: scale(0.96); }
+  .overlay .back { font-size: 11px; opacity: 0.6; }
+  .overlay a { color: #9fdcff; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>
+    <div class="label">SCORE</div>
+    <div class="value" id="score">0</div>
+    <div id="lives">📦📦📦</div>
+  </div>
+  <div class="mid">
+    <div class="label">HEIGHT</div>
+    <div class="value" id="height">0.0m</div>
+  </div>
+  <div class="right">
+    <div class="label">BEST</div>
+    <div class="value" id="best">0</div>
+  </div>
+</div>
+<div id="popup"></div>
+
+<div class="overlay" id="start-overlay">
+  <h1>CARGO CRANE</h1>
+  <p>軌道ドックの積み上げ試験へようこそ。<br>
+  旋回クレーンから貨物を切り離し、プラットフォームに高く積み上げろ。<br>
+  リリースの瞬間、旋回の勢いが貨物に乗る——タイミングが全てだ。<br><br>
+  操作: クリック / スペース / タップ で切り離し<br>
+  貨物を3回落とすと試験終了。</p>
+  <div class="score-line" id="best-line" style="display:none"></div>
+  <button id="start-btn">START</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<div class="overlay hidden" id="over-overlay">
+  <h1>TEST OVER</h1>
+  <div class="score-line" id="final-line"></div>
+  <button onclick="location.reload()">RETRY</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "../../vendor/three-0.170.0.module.min.js",
+    "cannon-es": "../../vendor/cannon-es-0.20.0.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+
+// ================= 描画セットアップ =================
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x02040c);
+scene.fog = new THREE.Fog(0x02040c, 40, 120);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 300);
+
+scene.add(new THREE.AmbientLight(0x445566, 1.4));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.6);
+sun.position.set(12, 20, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
+sun.shadow.camera.top = 30; sun.shadow.camera.bottom = -6;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 60;
+scene.add(sun);
+scene.add(sun.target);
+
+// 星空と惑星（背景）
+{
+  const pos = new Float32Array(1200 * 3);
+  for (let i = 0; i < 1200; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(90 + Math.random() * 60);
+    pos.set([v.x, Math.abs(v.y) * 0.8 - 15, v.z], i * 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xcfe0ff, size: 0.4, sizeAttenuation: true })));
+
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(26, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0x3a6a9a, roughness: 0.9, emissive: 0x0a1a2a })
+  );
+  planet.position.set(-45, -12, -70);
+  scene.add(planet);
+}
+
+// ================= 物理ワールド =================
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+world.allowSleep = true;
+world.solver.iterations = 14;
+const matCrate = new CANNON.Material('crate');
+world.addContactMaterial(new CANNON.ContactMaterial(matCrate, matCrate, {
+  friction: 0.55, restitution: 0.05,
+}));
+
+// ================= プラットフォーム =================
+const PLATFORM = { hx: 1.9, hy: 0.5, hz: 1.9, topY: 0 };
+{
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(PLATFORM.hx * 2, PLATFORM.hy * 2, PLATFORM.hz * 2),
+    new THREE.MeshStandardMaterial({ color: 0x4a5866, roughness: 0.8, metalness: 0.4 })
+  );
+  mesh.position.y = -PLATFORM.hy;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  // 縁の警告ストライプ（4辺の細帯）
+  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xccaa22, emissive: 0x775500, emissiveIntensity: 0.5 });
+  for (const [w, d, x, z] of [
+    [PLATFORM.hx * 2, 0.14, 0, PLATFORM.hz - 0.07],
+    [PLATFORM.hx * 2, 0.14, 0, -PLATFORM.hz + 0.07],
+    [0.14, PLATFORM.hz * 2 - 0.28, PLATFORM.hx - 0.07, 0],
+    [0.14, PLATFORM.hz * 2 - 0.28, -PLATFORM.hx + 0.07, 0],
+  ]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), stripeMat);
+    stripe.position.set(x, 0.012, z);
+    scene.add(stripe);
+  }
+  // 支柱（下は虚空）
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.6, 0.9, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0x2c3844, roughness: 0.8 })
+  );
+  pillar.position.y = -6;
+  scene.add(pillar);
+
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape: new CANNON.Box(new CANNON.Vec3(PLATFORM.hx, PLATFORM.hy, PLATFORM.hz)),
+    material: matCrate,
+  });
+  body.position.set(0, -PLATFORM.hy, 0);
+  world.addBody(body);
+}
+
+// ================= クレーン =================
+const MAST = new THREE.Vector3(-6, 0, 0);
+const JIB_R = 6;
+const crane = new THREE.Group();
+scene.add(crane);
+const matSteel = new THREE.MeshStandardMaterial({ color: 0xcc8822, roughness: 0.55, metalness: 0.5 });
+const mast = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1, 0.5), matSteel);
+mast.castShadow = true;
+crane.add(mast);
+const jib = new THREE.Group();
+const jibBeam = new THREE.Mesh(new THREE.BoxGeometry(JIB_R + 1.6, 0.34, 0.34), matSteel);
+jibBeam.position.x = (JIB_R + 1.6) / 2 - 0.8;
+jibBeam.castShadow = true;
+jib.add(jibBeam);
+crane.add(jib);
+const cableGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const cable = new THREE.Line(cableGeo, new THREE.LineBasicMaterial({ color: 0xaabbcc }));
+scene.add(cable);
+
+// 着地予測マーカー
+const marker = new THREE.Mesh(
+  new THREE.RingGeometry(0.42, 0.56, 32),
+  new THREE.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
+);
+marker.rotation.x = -Math.PI / 2;
+marker.visible = false;
+scene.add(marker);
+
+// ================= 貨物 =================
+const CRATE_HALF = 0.5;
+const crateColors = [0xcc6633, 0x3388aa, 0x66a044, 0x9977cc, 0xaa4455];
+const crates = []; // { mesh, body, judged, missed }
+let attached = null; // { mesh } 吊り下げ中（物理ボディなし・キネマティック）
+let crateIndex = 0;
+
+function makeCrateMesh() {
+  const color = crateColors[crateIndex % crateColors.length];
+  const g = new THREE.Group();
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(CRATE_HALF * 2, CRATE_HALF * 2, CRATE_HALF * 2),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.25 })
+  );
+  box.castShadow = true;
+  box.receiveShadow = true;
+  g.add(box);
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(box.geometry),
+    new THREE.LineBasicMaterial({ color: 0x111418 })
+  );
+  g.add(edges);
+  return g;
+}
+
+// ================= ゲーム状態 =================
+const state = {
+  started: false, over: false,
+  score: 0, lives: 3, placed: 0, height: 0, perfects: 0,
+};
+const bestKey = 'cargo-crane-best';
+let best = Number(localStorage.getItem(bestKey) || 0);
+document.getElementById('best').textContent = best;
+{
+  if (best > 0) {
+    const el = document.getElementById('best-line');
+    el.style.display = 'block';
+    el.textContent = `BEST SCORE: ${best}`;
+  }
+}
+
+// クレーン旋回: φ(t) = A·sin(ωt)  → ハングポイントは弧を描く
+let phase = 0;
+function angularSpeed() { return Math.min(0.9 + state.placed * 0.07, 2.1); }
+const SWING_A = 0.55;
+function hangHeight() { return state.height + 4.2; }
+function hangPoint() {
+  const phi = SWING_A * Math.sin(phase);
+  return new THREE.Vector3(MAST.x + JIB_R * Math.cos(phi), hangHeight(), JIB_R * Math.sin(phi));
+}
+function hangVelocity() {
+  const phi = SWING_A * Math.sin(phase);
+  const dphi = SWING_A * Math.cos(phase) * angularSpeed();
+  return new THREE.Vector3(-JIB_R * Math.sin(phi) * dphi, 0, JIB_R * Math.cos(phi) * dphi);
+}
+const CABLE_LEN = 2.2;
+
+// タワー最上段の中心（パーフェクト判定基準）
+function topCrateCenter() {
+  let top = null;
+  for (const c of crates) {
+    if (c.missed) continue;
+    if (!top || c.body.position.y > top.y) top = c.body.position;
+  }
+  return top ? new THREE.Vector3(top.x, top.y, top.z) : new THREE.Vector3(0, -CRATE_HALF, 0);
+}
+
+// ================= スポーン・リリース =================
+function spawnCrate() {
+  if (state.over) return;
+  attached = { mesh: makeCrateMesh() };
+  scene.add(attached.mesh);
+  crateIndex++;
+}
+
+function release(customPos = null, customVel = null) {
+  if (!attached || state.over || !state.started) return;
+  const pos = customPos ?? hangPoint().clone().setY(hangPoint().y - CABLE_LEN - CRATE_HALF);
+  const vel = customVel ?? hangVelocity();
+
+  const body = new CANNON.Body({
+    mass: 5,
+    shape: new CANNON.Box(new CANNON.Vec3(CRATE_HALF, CRATE_HALF, CRATE_HALF)),
+    material: matCrate,
+    position: new CANNON.Vec3(pos.x, pos.y, pos.z),
+    velocity: new CANNON.Vec3(vel.x, vel.y, vel.z),
+    allowSleep: true, sleepSpeedLimit: 0.2, sleepTimeLimit: 0.8,
+  });
+  const crate = { mesh: attached.mesh, body, judged: false, missed: false };
+  const targetAtRelease = topCrateCenter();
+  body.addEventListener('collide', () => {
+    if (crate.judged || crate.missed) return;
+    crate.judged = true;
+    judgeLanding(crate, targetAtRelease);
+  });
+  world.addBody(body);
+  crates.push(crate);
+  attached = null;
+  marker.visible = false;
+  sfx('release');
+  setTimeout(spawnCrate, 1500);
+}
+
+function judgeLanding(crate, target) {
+  const p = crate.body.position;
+  const dist = Math.hypot(p.x - target.x, p.z - target.z);
+  state.placed++;
+  if (dist < 0.24) {
+    state.score += 35;
+    state.perfects++;
+    showPopup('PERFECT! +35');
+    sfx('perfect');
+  } else {
+    state.score += 10;
+    sfx('land');
+  }
+  updateHud();
+}
+
+// ================= ミス・ゲームオーバー =================
+function checkFalls() {
+  for (const c of crates) {
+    if (c.missed || c.body.position.y > -6) continue;
+    c.missed = true;
+    c.judged = true; // 落下中の接触判定は無効化
+    world.removeBody(c.body);
+    scene.remove(c.mesh);
+    state.lives--;
+    showPopup('CARGO LOST!', true);
+    sfx('miss');
+    updateHud();
+    if (state.lives <= 0 && !state.over) gameOver();
+  }
+}
+
+function gameOver() {
+  state.over = true;
+  if (attached) { scene.remove(attached.mesh); attached = null; }
+  marker.visible = false;
+  cable.visible = false;
+  if (state.score > best) { best = state.score; localStorage.setItem(bestKey, best); }
+  document.getElementById('final-line').textContent =
+    `SCORE: ${state.score}   HEIGHT: ${state.height.toFixed(1)}m   BEST: ${best}`;
+  sfx('over');
+  setTimeout(() => document.getElementById('over-overlay').classList.remove('hidden'), 900);
+}
+
+// ================= HUD =================
+function updateHud() {
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('lives').textContent = '📦'.repeat(Math.max(0, state.lives));
+  document.getElementById('best').textContent = Math.max(best, state.score);
+}
+let popupTimer = null;
+function showPopup(text, bad = false) {
+  const el = document.getElementById('popup');
+  el.textContent = text;
+  el.classList.toggle('bad', bad);
+  el.classList.add('show');
+  clearTimeout(popupTimer);
+  popupTimer = setTimeout(() => el.classList.remove('show'), 900);
+}
+
+// ================= サウンド =================
+let audioCtx = null;
+function sfx(kind) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const tones = {
+      release: [[330, 0.08, 0.08]],
+      land:    [[140, 0.12, 0.16]],
+      perfect: [[660, 0.08, 0.1], [880, 0.08, 0.1], [1320, 0.16, 0.12]],
+      miss:    [[200, 0.12, 0.14], [130, 0.25, 0.14]],
+      over:    [[330, 0.15, 0.12], [247, 0.15, 0.12], [165, 0.4, 0.14]],
+      start:   [[440, 0.07, 0.1], [660, 0.1, 0.1]],
+    }[kind] || [];
+    let at = t;
+    for (const [freq, dur, vol] of tones) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = kind === 'land' || kind === 'miss' ? 'triangle' : 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(at); o.stop(at + dur + 0.02);
+      at += dur * 0.85;
+    }
+  } catch (_) { /* 音は演出のみ */ }
+}
+
+// ================= 入力 =================
+function onAction() {
+  if (!state.started || state.over) return;
+  release();
+}
+addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') onAction(); });
+renderer.domElement.addEventListener('pointerdown', onAction);
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  state.started = true;
+  document.getElementById('start-overlay').classList.add('hidden');
+  sfx('start');
+  spawnCrate();
+});
+
+// ================= メインループ =================
+const clock = new THREE.Clock();
+let acc = 0;
+
+function updateHeight() {
+  let h = 0;
+  for (const c of crates) {
+    if (c.missed) continue;
+    const p = c.body.position;
+    // プラットフォーム上空にあるものだけを高さとして数える
+    if (Math.abs(p.x) < PLATFORM.hx + 1 && Math.abs(p.z) < PLATFORM.hz + 1 && p.y > -1) {
+      h = Math.max(h, p.y + CRATE_HALF);
+    }
+  }
+  state.height = h;
+  document.getElementById('height').textContent = h.toFixed(1) + 'm';
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // 物理ステップ（固定 60Hz・最大3サブステップ）
+  if (state.started) {
+    world.step(1 / 60, dt, 3);
+    checkFalls();
+    updateHeight();
+  }
+
+  // クレーン旋回
+  if (!state.over) phase += angularSpeed() * dt;
+  const hp = hangPoint();
+  const phi = SWING_A * Math.sin(phase);
+  jib.rotation.y = -phi;
+  jib.position.y = hp.y + 0.9;
+  jib.position.x = MAST.x;
+  mast.scale.y = hp.y + 2.2;
+  mast.position.set(MAST.x, (hp.y + 2.2) / 2 - 0.6, 0);
+
+  // 吊り下げ中の貨物・ケーブル・予測マーカー
+  if (attached) {
+    const cratePos = hp.clone();
+    cratePos.y -= CABLE_LEN + CRATE_HALF;
+    attached.mesh.position.copy(cratePos);
+    attached.mesh.rotation.y = phi * 0.4;
+    cable.visible = true;
+    cable.geometry.setFromPoints([hp, cratePos.clone().setY(cratePos.y + CRATE_HALF)]);
+
+    // 弾道予測: 現在の速度で落としたときの着地点
+    const v = hangVelocity();
+    const targetY = state.height + CRATE_HALF;
+    const fall = Math.max(0, cratePos.y - targetY);
+    const t = Math.sqrt(2 * fall / 9.82);
+    marker.position.set(cratePos.x + v.x * t, state.height + 0.02, cratePos.z + v.z * t);
+    const tc = topCrateCenter();
+    const d = Math.hypot(marker.position.x - tc.x, marker.position.z - tc.z);
+    marker.material.color.set(d < 0.24 ? 0x66ff99 : 0xffcc55);
+    marker.visible = state.started && !state.over;
+  } else {
+    cable.visible = false;
+    marker.visible = false;
+  }
+
+  // メッシュ⇔ボディ同期
+  for (const c of crates) {
+    if (c.missed) continue;
+    c.mesh.position.copy(c.body.position);
+    c.mesh.quaternion.copy(c.body.quaternion);
+  }
+
+  // カメラ: タワーの成長に合わせて上昇
+  const camTargetY = state.height * 0.75 + 1.2;
+  camera.position.lerp(new THREE.Vector3(6.5, state.height + 4.6, 9.5), Math.min(1, 2.5 * dt));
+  camera.lookAt(0, camTargetY, 0);
+  sun.position.set(12, state.height + 20, 8);
+  sun.target.position.set(0, state.height * 0.5, 0);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ================= テスト用フック =================
+window.__crane = {
+  state,
+  crates: () => crates.filter(c => !c.missed).length,
+  // タワー最上段の真上から静かに落とす（決定論的にパーフェクト）
+  dropCentered() {
+    if (!attached) return false;
+    const tc = topCrateCenter();
+    const pos = new THREE.Vector3(tc.x, state.height + 2.2, tc.z);
+    release(pos, new THREE.Vector3(0, 0, 0));
+    return true;
+  },
+  // 横にずらして落とす（ミス誘発用）
+  dropOffset(dx) {
+    if (!attached) return false;
+    const tc = topCrateCenter();
+    release(new THREE.Vector3(tc.x + dx, state.height + 2.2, tc.z), new THREE.Vector3(0, 0, 0));
+    return true;
+  },
+};
+</script>
+</body>
+</html>
