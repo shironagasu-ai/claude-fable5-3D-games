@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Drone Arena — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas { display: block; cursor: crosshair; }
+  body { font-family: "Courier New", monospace; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px 20px; pointer-events: none; z-index: 10;
+    color: #9fdcff; text-shadow: 0 0 8px rgba(80, 180, 255, 0.8);
+  }
+  #hud .label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; }
+  #hud .value { font-size: 26px; font-weight: bold; }
+  #hud .right { text-align: right; }
+  #hud .mid { text-align: center; }
+  #hpbar {
+    width: 180px; height: 10px; margin-top: 6px;
+    border: 1px solid rgba(120, 190, 255, 0.5); border-radius: 4px; overflow: hidden;
+  }
+  #hpfill {
+    height: 100%; width: 100%;
+    background: linear-gradient(90deg, #4fd88f, #8fffce);
+    transition: width 0.15s;
+  }
+  #hpfill.low { background: linear-gradient(90deg, #d84f4f, #ff9f8f); }
+  #banner {
+    position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%);
+    font-size: 40px; font-weight: bold; letter-spacing: 10px;
+    color: #8fd8ff; text-shadow: 0 0 24px rgba(90, 190, 255, 0.9);
+    z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  #banner.show { opacity: 1; }
+  #dmg {
+    position: fixed; inset: 0; pointer-events: none; z-index: 9;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 40, 20, 0.45));
+    opacity: 0; transition: opacity 0.12s;
+  }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(8, 6, 16, 0.6), rgba(0, 0, 0, 0.9));
+    color: #cfeaff; z-index: 20; transition: opacity 0.35s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: clamp(30px, 7vw, 56px); letter-spacing: 8px;
+    color: #ff9f6f; text-shadow: 0 0 24px rgba(255, 140, 80, 0.85);
+  }
+  .overlay p { font-size: 14px; opacity: 0.85; letter-spacing: 1px; text-align: center; line-height: 1.9; }
+  .overlay .score-line { font-size: 20px; color: #ffd27f; text-shadow: 0 0 12px rgba(255, 190, 80, 0.8); }
+  .overlay button {
+    cursor: pointer; font-family: inherit; font-size: 16px; letter-spacing: 3px;
+    padding: 14px 42px; color: #241200;
+    background: linear-gradient(180deg, #ffc78f, #d9822f);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(255, 170, 80, 0.5);
+  }
+  .overlay button:active { transform: scale(0.96); }
+  .overlay .back { font-size: 11px; opacity: 0.6; }
+  .overlay a { color: #9fdcff; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>
+    <div class="label">HULL</div>
+    <div id="hpbar"><div id="hpfill"></div></div>
+    <div class="label" style="margin-top:8px">SCORE</div>
+    <div class="value" id="score">0</div>
+  </div>
+  <div class="mid">
+    <div class="label">WAVE</div>
+    <div class="value" id="wave">-</div>
+  </div>
+  <div class="right">
+    <div class="label">BEST</div>
+    <div class="value" id="best">0</div>
+  </div>
+</div>
+<div id="banner"></div>
+<div id="dmg"></div>
+
+<div class="overlay" id="start-overlay">
+  <h1>DRONE ARENA</h1>
+  <p>採掘ステーションの警備ドローンが暴走した。<br>
+  デッキに立ち、押し寄せるウェーブを迎え撃て。<br><br>
+  移動: WASD / 矢印キー　照準: マウス　射撃: クリック長押し or スペース<br>
+  （スマホ: 左半分ドラッグで移動・右半分タッチで照準＋射撃）<br><br>
+  <span style="color:#ff7f7f">赤=突進自爆</span>　<span style="color:#c58fff">紫=側面急襲</span>　<span style="color:#6fe8c8">青緑=遠距離砲撃</span></p>
+  <div class="score-line" id="best-line" style="display:none"></div>
+  <button id="start-btn">START</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<div class="overlay hidden" id="over-overlay">
+  <h1>DRONE DOWN</h1>
+  <div class="score-line" id="final-line"></div>
+  <button onclick="location.reload()">RETRY</button>
+  <p class="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ================= 描画セットアップ =================
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030309);
+scene.fog = new THREE.Fog(0x030309, 60, 140);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 300);
+
+scene.add(new THREE.AmbientLight(0x445566, 1.5));
+const keyLight = new THREE.DirectionalLight(0xcfe0ff, 1.8);
+keyLight.position.set(10, 25, 8);
+scene.add(keyLight);
+
+// 星空と惑星
+{
+  const pos = new Float32Array(900 * 3);
+  for (let i = 0; i < 900; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(100 + Math.random() * 60);
+    pos.set([v.x, v.y, v.z], i * 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xbfd2ff, size: 0.5 })));
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(30, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.95, emissive: 0x1a0d06 })
+  );
+  planet.position.set(-60, 8, -80);
+  scene.add(planet);
+}
+
+// ================= アリーナ =================
+const ARENA_R = 22;
+{
+  const deckTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 1024;
+    const g = c.getContext('2d');
+    g.fillStyle = '#11151c';
+    g.fillRect(0, 0, 1024, 1024);
+    g.strokeStyle = 'rgba(90, 150, 210, 0.28)';
+    g.lineWidth = 3;
+    for (let r = 100; r <= 500; r += 100) {
+      g.beginPath(); g.arc(512, 512, r, 0, Math.PI * 2); g.stroke();
+    }
+    for (let a = 0; a < 12; a++) {
+      g.beginPath();
+      g.moveTo(512, 512);
+      g.lineTo(512 + Math.cos(a * Math.PI / 6) * 505, 512 + Math.sin(a * Math.PI / 6) * 505);
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(230, 190, 80, 0.7)';
+    g.lineWidth = 10;
+    g.beginPath(); g.arc(512, 512, 498, 0, Math.PI * 2); g.stroke();
+    return new THREE.CanvasTexture(c);
+  })();
+  const deck = new THREE.Mesh(
+    new THREE.CylinderGeometry(ARENA_R + 1.5, ARENA_R + 3, 2, 48),
+    [
+      new THREE.MeshStandardMaterial({ color: 0x1a2028, roughness: 0.8 }),
+      new THREE.MeshStandardMaterial({ map: deckTex, roughness: 0.75, metalness: 0.35 }),
+      new THREE.MeshStandardMaterial({ color: 0x0c0f14, roughness: 0.9 }),
+    ]
+  );
+  deck.position.y = -1;
+  scene.add(deck);
+  const fence = new THREE.Mesh(
+    new THREE.TorusGeometry(ARENA_R + 1.2, 0.12, 8, 64),
+    new THREE.MeshBasicMaterial({ color: 0x66bbff })
+  );
+  fence.rotation.x = Math.PI / 2;
+  fence.position.y = 0.5;
+  scene.add(fence);
+}
+
+// ================= プレイヤー =================
+const player = {
+  group: new THREE.Group(), turret: new THREE.Group(),
+  pos: new THREE.Vector3(0, 0, 0), vel: new THREE.Vector3(),
+  aimYaw: 0, hp: 100, fireCd: 0, hurtCd: 0,
+};
+{
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8fa4b8, roughness: 0.4, metalness: 0.6 });
+  const accMat = new THREE.MeshBasicMaterial({ color: 0x66ddff });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.0, 0.5, 8), bodyMat);
+  base.position.y = 0.35;
+  player.group.add(base);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.07, 6, 20), accMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.32;
+  player.group.add(ring);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.45, 1.1), bodyMat);
+  head.position.y = 0.8;
+  player.turret.add(head);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.2, 8), bodyMat);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.82, -0.95);
+  player.turret.add(barrel);
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), accMat);
+  muzzle.position.set(0, 0.82, -1.55);
+  muzzle.visible = false;
+  player.turret.add(muzzle);
+  player.muzzle = muzzle;
+  player.group.add(player.turret);
+}
+scene.add(player.group);
+const playerLight = new THREE.PointLight(0x88ccff, 12, 18);
+playerLight.position.y = 3;
+player.group.add(playerLight);
+
+// ================= 弾プール =================
+function makePool(count, geo, mat) {
+  const pool = [];
+  for (let i = 0; i < count; i++) {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.visible = false;
+    scene.add(mesh);
+    pool.push({ mesh, vel: new THREE.Vector3(), ttl: 0, alive: false });
+  }
+  return pool;
+}
+const pBullets = makePool(70,
+  new THREE.CapsuleGeometry(0.09, 0.5, 3, 6).rotateX(Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x9fefff }));
+const eBullets = makePool(60,
+  new THREE.SphereGeometry(0.18, 8, 8),
+  new THREE.MeshBasicMaterial({ color: 0xff7755 }));
+
+function fireBullet(pool, origin, dir, speed, ttl) {
+  const b = pool.find(x => !x.alive);
+  if (!b) return null;
+  b.alive = true;
+  b.ttl = ttl;
+  b.mesh.visible = true;
+  b.mesh.position.copy(origin);
+  b.vel.copy(dir).multiplyScalar(speed);
+  b.mesh.lookAt(origin.clone().add(dir));
+  return b;
+}
+function stepBullets(pool, dt) {
+  for (const b of pool) {
+    if (!b.alive) continue;
+    b.ttl -= dt;
+    b.mesh.position.addScaledVector(b.vel, dt);
+    if (b.ttl <= 0 || b.mesh.position.length() > ARENA_R + 14) {
+      b.alive = false; b.mesh.visible = false;
+    }
+  }
+}
+
+// ================= 爆発パーティクル =================
+const PARTS = 500;
+const partGeo = new THREE.BufferGeometry();
+partGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PARTS * 3), 3));
+const partColors = new Float32Array(PARTS * 3);
+partGeo.setAttribute('color', new THREE.BufferAttribute(partColors, 3));
+const partMat = new THREE.PointsMaterial({ size: 0.3, vertexColors: true, transparent: true, opacity: 0.95 });
+const partMesh = new THREE.Points(partGeo, partMat);
+scene.add(partMesh);
+const partVel = [];
+const partLife = new Float32Array(PARTS);
+for (let i = 0; i < PARTS; i++) { partVel.push(new THREE.Vector3()); partLife[i] = 0; }
+let partCursor = 0;
+
+function explode(pos, color, count = 22, speed = 9) {
+  const c = new THREE.Color(color);
+  for (let n = 0; n < count; n++) {
+    const i = partCursor = (partCursor + 1) % PARTS;
+    partLife[i] = 0.65 + Math.random() * 0.3;
+    partGeo.attributes.position.setXYZ(i, pos.x, pos.y + 0.6, pos.z);
+    partColors[i * 3] = c.r; partColors[i * 3 + 1] = c.g; partColors[i * 3 + 2] = c.b;
+    partVel[i].set(Math.random() - 0.5, Math.random() * 0.7, Math.random() - 0.5)
+      .normalize().multiplyScalar(speed * (0.4 + Math.random() * 0.8));
+  }
+  partGeo.attributes.color.needsUpdate = true;
+}
+function stepParticles(dt) {
+  const p = partGeo.attributes.position;
+  for (let i = 0; i < PARTS; i++) {
+    if (partLife[i] <= 0) continue;
+    partLife[i] -= dt;
+    partVel[i].y -= 12 * dt;
+    p.setXYZ(i,
+      p.getX(i) + partVel[i].x * dt,
+      Math.max(0.05, p.getY(i) + partVel[i].y * dt),
+      p.getZ(i) + partVel[i].z * dt);
+    if (partLife[i] <= 0) p.setXYZ(i, 0, -50, 0);
+  }
+  p.needsUpdate = true;
+}
+
+// ================= 敵 =================
+const ENEMY_DEFS = {
+  rusher: { hp: 25, speed: 8.5, score: 100, color: 0xff4433 },
+  flanker: { hp: 50, speed: 7.5, score: 150, color: 0xb066ff },
+  gunner: { hp: 75, speed: 5.5, score: 200, color: 0x33ddaa },
+};
+const enemies = [];
+
+function makeEnemyMesh(type) {
+  const def = ENEMY_DEFS[type];
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color: def.color, roughness: 0.4, metalness: 0.4,
+    emissive: def.color, emissiveIntensity: 0.35,
+  });
+  if (type === 'rusher') {
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), mat);
+    core.position.y = 0.8;
+    g.add(core);
+  } else if (type === 'flanker') {
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 4), mat);
+    body.rotation.x = Math.PI / 2;
+    body.position.y = 0.8;
+    g.add(body);
+    for (const sx of [-0.6, 0.6]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.5), mat);
+      wing.position.set(sx, 0.8, 0.3);
+      g.add(wing);
+    }
+  } else {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 1.3), mat);
+    body.position.y = 0.8;
+    g.add(body);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.0, 6), mat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.9, -0.9);
+    g.add(barrel);
+  }
+  g.userData.mat = mat;
+  return g;
+}
+
+function spawnEnemy(type) {
+  const def = ENEMY_DEFS[type];
+  const a = Math.random() * Math.PI * 2;
+  const pos = new THREE.Vector3(Math.cos(a) * (ARENA_R - 1.5), 0, Math.sin(a) * (ARENA_R - 1.5));
+  // スポーン予告リング
+  const tele = new THREE.Mesh(
+    new THREE.RingGeometry(0.5, 0.9, 24),
+    new THREE.MeshBasicMaterial({ color: def.color, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+  );
+  tele.rotation.x = -Math.PI / 2;
+  tele.position.copy(pos).setY(0.06);
+  scene.add(tele);
+  setTimeout(() => {
+    scene.remove(tele);
+    if (state.over) return;
+    const mesh = makeEnemyMesh(type);
+    mesh.position.copy(pos);
+    scene.add(mesh);
+    enemies.push({
+      type, def, mesh, pos: mesh.position, vel: new THREE.Vector3(),
+      hp: def.hp, flash: 0,
+      state: 'main', stateT: 1 + Math.random() * 2,
+      orbitDir: Math.random() < 0.5 ? -1 : 1, fireCd: 1 + Math.random(),
+    });
+  }, 700);
+}
+
+function damageEnemy(e, dmg) {
+  e.hp -= dmg;
+  e.flash = 0.08;
+  e.mesh.userData.mat.emissiveIntensity = 1.6;
+  if (e.hp <= 0) {
+    killEnemy(e, true);
+  } else {
+    sfx('hit');
+  }
+}
+
+function killEnemy(e, scored) {
+  const i = enemies.indexOf(e);
+  if (i < 0) return;
+  enemies.splice(i, 1);
+  scene.remove(e.mesh);
+  explode(e.pos, e.def.color);
+  shake(0.25);
+  sfx('boom');
+  if (scored) {
+    state.score += e.def.score;
+    if (Math.random() < 0.16) spawnOrb(e.pos.clone());
+  }
+}
+
+function stepEnemies(dt) {
+  const pp = player.pos;
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e.flash > 0) {
+      e.flash -= dt;
+      if (e.flash <= 0) e.mesh.userData.mat.emissiveIntensity = 0.35;
+    }
+    const toP = pp.clone().sub(e.pos);
+    toP.y = 0;
+    const dist = toP.length();
+    const dirP = toP.clone().normalize();
+    const want = new THREE.Vector3();
+
+    if (e.type === 'rusher') {
+      want.copy(dirP).multiplyScalar(e.def.speed + wave * 0.25);
+      if (dist < 1.6) {
+        // 自爆
+        killEnemy(e, false);
+        damagePlayer(15);
+        continue;
+      }
+    } else if (e.type === 'flanker') {
+      e.stateT -= dt;
+      if (e.state === 'main') {
+        // プレイヤーの側面へ回り込む
+        const side = new THREE.Vector3(-dirP.z, 0, dirP.x).multiplyScalar(e.orbitDir * 8);
+        const target = pp.clone().add(side);
+        want.copy(target.sub(e.pos).normalize()).multiplyScalar(e.def.speed);
+        if (e.stateT <= 0 && dist < 14) { e.state = 'dive'; e.stateT = 1.3; }
+      } else {
+        // 急襲ダイブ
+        want.copy(dirP).multiplyScalar(13);
+        if (dist < 1.5) {
+          damagePlayer(10);
+          e.state = 'main'; e.stateT = 1.6 + Math.random();
+          e.orbitDir *= -1;
+          e.vel.copy(dirP).multiplyScalar(-10); // 離脱
+        }
+        if (e.stateT <= 0) { e.state = 'main'; e.stateT = 1.4 + Math.random(); }
+      }
+    } else {
+      // gunner: 距離を保ち砲撃
+      if (dist < 10) want.copy(dirP).multiplyScalar(-e.def.speed);
+      else if (dist > 16) want.copy(dirP).multiplyScalar(e.def.speed);
+      else {
+        const side = new THREE.Vector3(-dirP.z, 0, dirP.x);
+        want.copy(side).multiplyScalar(e.orbitDir * e.def.speed * 0.5);
+      }
+      e.fireCd -= dt;
+      if (e.fireCd <= 0 && dist < 22) {
+        e.fireCd = 2.4;
+        // 3点バースト
+        for (let n = 0; n < 3; n++) {
+          setTimeout(() => {
+            if (state.over || enemies.indexOf(e) < 0) return;
+            const d = player.pos.clone().sub(e.pos).setY(0).normalize();
+            fireBullet(eBullets, e.pos.clone().setY(0.9), d, 15, 2.2);
+            sfx('eshoot');
+          }, n * 130);
+        }
+      }
+    }
+
+    // 敵同士の分離
+    for (const o of enemies) {
+      if (o === e) continue;
+      const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < 4.8 && d2 > 1e-4) {
+        const inv = 5.5 / d2;
+        want.x += dx * inv; want.z += dz * inv;
+      }
+    }
+
+    e.vel.lerp(want, Math.min(1, 3.5 * dt));
+    e.pos.addScaledVector(e.vel, dt);
+    // アリーナ境界
+    const r = Math.hypot(e.pos.x, e.pos.z);
+    if (r > ARENA_R) { e.pos.multiplyScalar(ARENA_R / r); }
+    // 進行方向を向く（gunner は常にプレイヤーを向く）
+    const face = e.type === 'gunner' ? pp : e.pos.clone().add(e.vel);
+    e.mesh.lookAt(face.x, e.pos.y, face.z);
+    if (e.type === 'rusher') e.mesh.children[0].rotation.x += dt * 6;
+  }
+}
+
+// ================= 回復オーブ =================
+const orbs = [];
+function spawnOrb(pos) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.35, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0x66ff99 })
+  );
+  mesh.position.copy(pos).setY(0.8);
+  scene.add(mesh);
+  orbs.push({ mesh, ttl: 10 });
+}
+function stepOrbs(dt, t) {
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    const o = orbs[i];
+    o.ttl -= dt;
+    o.mesh.position.y = 0.8 + Math.sin(t * 4 + i) * 0.15;
+    o.mesh.scale.setScalar(o.ttl < 2 ? 0.7 + Math.sin(t * 12) * 0.25 : 1);
+    if (o.ttl <= 0) { scene.remove(o.mesh); orbs.splice(i, 1); continue; }
+    if (o.mesh.position.distanceTo(player.pos) < 1.6) {
+      player.hp = Math.min(100, player.hp + 20);
+      updateHud();
+      sfx('orb');
+      scene.remove(o.mesh);
+      orbs.splice(i, 1);
+    }
+  }
+}
+
+// ================= ウェーブ =================
+let wave = 0;
+let spawnQueue = [];
+let spawnTimer = 0;
+let intermission = 0;
+
+function waveComposition(n) {
+  const q = [];
+  for (let i = 0; i < 3 + n * 2; i++) q.push('rusher');
+  for (let i = 0; i < (n >= 2 ? 1 + Math.floor(n / 2) : 0); i++) q.push('flanker');
+  for (let i = 0; i < (n >= 3 ? Math.floor(n / 2) : 0); i++) q.push('gunner');
+  // シャッフル
+  for (let i = q.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [q[i], q[j]] = [q[j], q[i]];
+  }
+  return q;
+}
+
+function startWave(n) {
+  wave = n;
+  spawnQueue = waveComposition(n);
+  spawnTimer = 0.5;
+  showBanner(`WAVE ${n}`);
+  sfx('wave');
+  updateHud();
+}
+
+function stepWave(dt) {
+  if (intermission > 0) {
+    intermission -= dt;
+    if (intermission <= 0) startWave(wave + 1);
+    return;
+  }
+  if (spawnQueue.length > 0) {
+    spawnTimer -= dt;
+    if (spawnTimer <= 0 && enemies.length < 16) {
+      spawnEnemy(spawnQueue.shift());
+      spawnTimer = Math.max(0.3, 0.9 - wave * 0.05);
+    }
+  } else if (enemies.length === 0 && pendingSpawns() === 0) {
+    state.score += 500;
+    showBanner('WAVE CLEAR  +500');
+    sfx('clear');
+    intermission = 2.6;
+  }
+}
+// spawnEnemy の setTimeout 中の敵を数える
+let telegraphCount = 0;
+const _origSpawn = spawnEnemy;
+function pendingSpawns() { return telegraphCount; }
+spawnEnemy = function (type) {
+  telegraphCount++;
+  setTimeout(() => { telegraphCount--; }, 710);
+  _origSpawn(type);
+};
+
+// ================= プレイヤー戦闘 =================
+function damagePlayer(dmg) {
+  if (state.over || player.hurtCd > 0) return;
+  player.hp -= dmg;
+  player.hurtCd = 0.35;
+  shake(0.6);
+  sfx('hurt');
+  const dmgEl = document.getElementById('dmg');
+  dmgEl.style.opacity = 1;
+  setTimeout(() => { dmgEl.style.opacity = 0; }, 180);
+  updateHud();
+  if (player.hp <= 0) gameOver();
+}
+
+function tryFire() {
+  if (player.fireCd > 0) return;
+  player.fireCd = 0.14;
+  const dir = new THREE.Vector3(-Math.sin(player.aimYaw), 0, -Math.cos(player.aimYaw));
+  const origin = player.pos.clone().add(dir.clone().multiplyScalar(1.6)).setY(0.85);
+  fireBullet(pBullets, origin, dir, 38, 0.9);
+  player.muzzle.visible = true;
+  setTimeout(() => { player.muzzle.visible = false; }, 40);
+  sfx('shoot');
+}
+
+function checkHits() {
+  for (const b of pBullets) {
+    if (!b.alive) continue;
+    for (const e of enemies) {
+      const dx = b.mesh.position.x - e.pos.x, dz = b.mesh.position.z - e.pos.z;
+      if (dx * dx + dz * dz < 1.1) {
+        b.alive = false; b.mesh.visible = false;
+        damageEnemy(e, 25);
+        break;
+      }
+    }
+  }
+  for (const b of eBullets) {
+    if (!b.alive) continue;
+    const dx = b.mesh.position.x - player.pos.x, dz = b.mesh.position.z - player.pos.z;
+    if (dx * dx + dz * dz < 1.2) {
+      b.alive = false; b.mesh.visible = false;
+      damagePlayer(8);
+    }
+  }
+}
+
+// ================= 入力 =================
+const keys = new Set();
+addEventListener('keydown', e => keys.add(e.code));
+addEventListener('keyup', e => keys.delete(e.code));
+let mouseFiring = false;
+let aimTarget = new THREE.Vector3(0, 0, -5);
+const raycaster = new THREE.Raycaster();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.8);
+const ndc = new THREE.Vector2();
+
+function aimFromScreen(cx, cy) {
+  ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(groundPlane, hit)) aimTarget.copy(hit);
+}
+addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') aimFromScreen(e.clientX, e.clientY);
+});
+addEventListener('pointerdown', e => {
+  if (e.target.closest('.overlay')) return;
+  if (e.pointerType === 'mouse') { mouseFiring = true; aimFromScreen(e.clientX, e.clientY); }
+});
+addEventListener('pointerup', e => { if (e.pointerType === 'mouse') mouseFiring = false; });
+
+// スマホ: 左半分=移動スティック / 右半分=照準+射撃
+const touchMove = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+let touchFire = null;
+addEventListener('touchstart', e => {
+  for (const t of e.changedTouches) {
+    if (t.clientX < innerWidth / 2 && touchMove.id === null) {
+      touchMove.id = t.identifier; touchMove.ox = t.clientX; touchMove.oy = t.clientY;
+      touchMove.dx = 0; touchMove.dy = 0;
+    } else if (touchFire === null) {
+      touchFire = t.identifier;
+      aimFromScreen(t.clientX, t.clientY);
+    }
+  }
+}, { passive: true });
+addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchMove.id) {
+      touchMove.dx = THREE.MathUtils.clamp((t.clientX - touchMove.ox) / 50, -1, 1);
+      touchMove.dy = THREE.MathUtils.clamp((t.clientY - touchMove.oy) / 50, -1, 1);
+    } else if (t.identifier === touchFire) {
+      aimFromScreen(t.clientX, t.clientY);
+    }
+  }
+}, { passive: true });
+addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchMove.id) { touchMove.id = null; touchMove.dx = 0; touchMove.dy = 0; }
+    else if (t.identifier === touchFire) touchFire = null;
+  }
+}, { passive: true });
+
+// ================= 画面シェイク =================
+let shakeAmp = 0;
+function shake(a) { shakeAmp = Math.min(1.2, shakeAmp + a); }
+
+// ================= サウンド =================
+let audioCtx = null;
+let lastShootSfx = 0;
+function sfx(kind) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (kind === 'shoot') {
+      // 連射音はレート制限
+      if (performance.now() - lastShootSfx < 90) return;
+      lastShootSfx = performance.now();
+    }
+    const t = audioCtx.currentTime;
+    const tones = {
+      shoot:  [[880, 0.05, 0.05]],
+      eshoot: [[440, 0.06, 0.05]],
+      hit:    [[330, 0.05, 0.07]],
+      boom:   [[120, 0.2, 0.16], [80, 0.25, 0.12]],
+      hurt:   [[180, 0.15, 0.14]],
+      orb:    [[660, 0.07, 0.09], [990, 0.1, 0.1]],
+      wave:   [[440, 0.1, 0.1], [550, 0.1, 0.1], [660, 0.16, 0.11]],
+      clear:  [[660, 0.09, 0.1], [880, 0.09, 0.1], [1100, 0.18, 0.11]],
+      over:   [[330, 0.16, 0.12], [247, 0.16, 0.12], [165, 0.4, 0.13]],
+    }[kind] || [];
+    let at = t;
+    for (const [freq, dur, vol] of tones) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = kind === 'boom' || kind === 'hurt' ? 'triangle' : 'square';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(at); o.stop(at + dur + 0.02);
+      at += dur * 0.8;
+    }
+  } catch (_) { /* 音は演出のみ */ }
+}
+
+// ================= ゲーム状態・UI =================
+const state = { started: false, over: false, score: 0 };
+const bestKey = 'drone-arena-best';
+let best = Number(localStorage.getItem(bestKey) || 0);
+document.getElementById('best').textContent = best;
+if (best > 0) {
+  const el = document.getElementById('best-line');
+  el.style.display = 'block';
+  el.textContent = `BEST: ${best}`;
+}
+
+let bannerTimer = null;
+function showBanner(text) {
+  const el = document.getElementById('banner');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+function updateHud() {
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('wave').textContent = wave || '-';
+  document.getElementById('best').textContent = Math.max(best, state.score);
+  const fill = document.getElementById('hpfill');
+  fill.style.width = Math.max(0, player.hp) + '%';
+  fill.classList.toggle('low', player.hp < 35);
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  state.started = true;
+  document.getElementById('start-overlay').classList.add('hidden');
+  startWave(1);
+});
+
+function gameOver() {
+  state.over = true;
+  explode(player.pos, 0x88ccff, 40, 12);
+  player.group.visible = false;
+  shake(1.2);
+  if (state.score > best) { best = state.score; localStorage.setItem(bestKey, best); }
+  document.getElementById('final-line').textContent =
+    `SCORE: ${state.score}   WAVE: ${wave}   BEST: ${best}`;
+  sfx('over');
+  setTimeout(() => document.getElementById('over-overlay').classList.remove('hidden'), 1100);
+}
+
+// ================= メインループ =================
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  if (state.started && !state.over) {
+    // 移動
+    let mx = 0, mz = 0;
+    if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
+    if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;
+    if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
+    mx += touchMove.dx; mz += touchMove.dy;
+    const len = Math.hypot(mx, mz);
+    if (len > 1) { mx /= len; mz /= len; }
+    player.vel.lerp(new THREE.Vector3(mx * 12, 0, mz * 12), Math.min(1, 10 * dt));
+    player.pos.addScaledVector(player.vel, dt);
+    const pr = Math.hypot(player.pos.x, player.pos.z);
+    if (pr > ARENA_R - 1) player.pos.multiplyScalar((ARENA_R - 1) / pr);
+    player.group.position.copy(player.pos);
+    player.group.rotation.y = -Math.atan2(player.vel.x, -player.vel.z) * 0.15;
+
+    // 照準（砲塔は移動と独立）
+    const ad = aimTarget.clone().sub(player.pos);
+    player.aimYaw = Math.atan2(-ad.x, -ad.z);
+    player.turret.rotation.y = player.aimYaw - player.group.rotation.y;
+
+    player.fireCd -= dt;
+    player.hurtCd -= dt;
+    if ((mouseFiring || touchFire !== null || keys.has('Space')) && player.fireCd <= 0) tryFire();
+
+    stepWave(dt);
+    stepEnemies(dt);
+    stepBullets(pBullets, dt);
+    stepBullets(eBullets, dt);
+    checkHits();
+    stepOrbs(dt, t);
+  }
+  stepParticles(dt);
+
+  // カメラ（追従＋シェイク）
+  shakeAmp = Math.max(0, shakeAmp - 3 * dt);
+  const sx = (Math.random() - 0.5) * shakeAmp;
+  const sy = (Math.random() - 0.5) * shakeAmp;
+  camera.position.set(player.pos.x * 0.6 + sx, 24, player.pos.z * 0.6 + 15 + sy);
+  camera.lookAt(player.pos.x * 0.8, 0, player.pos.z * 0.8);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ================= テスト用フック =================
+window.__arena = {
+  state, player,
+  wave: () => wave,
+  enemies: () => enemies.map(e => ({ x: e.pos.x, z: e.pos.z, type: e.type, hp: e.hp, state: e.state })),
+  enemyBulletsAlive: () => eBullets.filter(b => b.alive).length,
+  setPlayer(x, z) { player.pos.set(x, 0, z); },
+  aimAt(x, z) { aimTarget.set(x, 0, z); },
+  setFiring(v) { mouseFiring = v; },
+  damagePlayer(n) { player.hurtCd = 0; damagePlayer(n); },
+  jumpToWave(n) {
+    for (const e of [...enemies]) killEnemy(e, false);
+    spawnQueue = [];
+    intermission = 0;
+    startWave(n);
+  },
+};
+</script>
+</body>
+</html>

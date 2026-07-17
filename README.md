@@ -35,6 +35,7 @@ python3 -m http.server 8000
 | [Cargo Crane](games/cargo-crane/) | 旋回クレーンから貨物を落として積み上げる物理タワービルダー。剛体スタッキング・弾道予測マーカー・ワンボタン操作 | Three.js / cannon-es |
 | [Aurora Sea](games/aurora-sea/) | オーロラの海を駆けるゲートスラローム。Gerstner風の波・プロシージャル空・オーロラ・ポストプロセスブルームまで全て自作 GLSL | Three.js / 自作シェーダー |
 | [Swarm](games/swarm/) | 深海の発光魚 2,200 体（Boids）を捕食者から守る群体シミュレーションゲーム。空間ハッシュ近傍探索＋InstancedMesh 1ドローコール描画 | Three.js / Boids / データ指向設計 |
+| [Drone Arena](games/drone-arena/) | ウェーブ制ツインスティック・シューター。追跡自爆／側面急襲／遠距離カイティングの3種の敵AIステートマシン、弾プール、画面シェイク等のゲームフィール演出 | Three.js / 敵AI / オブジェクトプール |
 
 ## GitHub Pages の設定
 
