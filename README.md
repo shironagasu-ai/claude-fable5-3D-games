@@ -36,6 +36,7 @@ python3 -m http.server 8000
 | [Aurora Sea](games/aurora-sea/) | オーロラの海を駆けるゲートスラローム。Gerstner風の波・プロシージャル空・オーロラ・ポストプロセスブルームまで全て自作 GLSL | Three.js / 自作シェーダー |
 | [Swarm](games/swarm/) | 深海の発光魚 2,200 体（Boids）を捕食者から守る群体シミュレーションゲーム。空間ハッシュ近傍探索＋InstancedMesh 1ドローコール描画 | Three.js / Boids / データ指向設計 |
 | [Drone Arena](games/drone-arena/) | ウェーブ制ツインスティック・シューター。追跡自爆／側面急襲／遠距離カイティングの3種の敵AIステートマシン、弾プール、画面シェイク等のゲームフィール演出 | Three.js / 敵AI / オブジェクトプール |
+| [Flip Wall](games/flip-wall/) | アップロードしたイラスト（最大6枚・1枚でも可）をボクセル壁に展示し、クリック地点からさざなみ状にフリップして切り替えるインタラクティブ・ギャラリー。立方体の6面=6枚をカスタムシェーダーで割り当て | Three.js / カスタムシェーダー / File API |
 
 ## GitHub Pages の設定
 
