@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Flip Wall — Fable 3D Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+  canvas.gl { display: block; cursor: pointer; }
+  body { font-family: "Courier New", monospace; }
+
+  #title {
+    position: fixed; top: 14px; left: 18px; z-index: 10; pointer-events: none;
+    color: #9fdcff; text-shadow: 0 0 8px rgba(80, 180, 255, 0.8);
+  }
+  #title .name { font-size: 18px; letter-spacing: 4px; font-weight: bold; }
+  #title .hint { font-size: 11px; letter-spacing: 1px; opacity: 0.65; margin-top: 4px; line-height: 1.7; }
+  #back {
+    position: fixed; top: 16px; right: 18px; z-index: 10;
+    font-size: 11px; letter-spacing: 1px;
+  }
+  #back a { color: #9fdcff; opacity: 0.7; }
+
+  #slots {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; align-items: flex-end; z-index: 10;
+  }
+  .slot {
+    width: 64px; height: 84px; border-radius: 8px; cursor: pointer;
+    border: 2px solid rgba(120, 190, 255, 0.35);
+    background: rgba(10, 18, 32, 0.75) center/cover no-repeat;
+    position: relative; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+  }
+  .slot:hover { transform: translateY(-3px); border-color: rgba(140, 210, 255, 0.8); }
+  .slot.active { border-color: #8fffce; box-shadow: 0 0 14px rgba(100, 255, 190, 0.5); }
+  .slot.dragover { border-color: #ffd27f; box-shadow: 0 0 14px rgba(255, 200, 100, 0.6); }
+  .slot .num {
+    position: absolute; top: 3px; left: 6px;
+    font-size: 11px; color: #cfeaff; text-shadow: 0 0 6px #000, 0 0 6px #000;
+  }
+  .slot .empty-mark {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: rgba(160, 210, 255, 0.6);
+  }
+  .slot.user .empty-mark { display: none; }
+  #spin-btn {
+    width: 52px; height: 52px; border-radius: 50%; cursor: pointer; align-self: center;
+    border: 2px solid rgba(120, 190, 255, 0.4); color: #9fdcff;
+    background: rgba(10, 18, 32, 0.75); font-size: 20px; font-family: inherit;
+  }
+  #spin-btn:hover { border-color: rgba(140, 210, 255, 0.9); }
+  #drop-hint {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(4, 10, 24, 0.72); z-index: 30; pointer-events: none;
+    color: #cfeaff; font-size: 22px; letter-spacing: 4px;
+    text-shadow: 0 0 16px rgba(90, 190, 255, 0.9);
+  }
+  #drop-hint.show { display: flex; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<div id="title">
+  <div class="name">FLIP WALL</div>
+  <div class="hint">画像をドロップ / 下のスロットをクリックでアップロード（ブラウザ内処理・送信なし）<br>
+  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波</div>
+</div>
+<div id="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></div>
+
+<div id="slots">
+  <div class="slot" data-slot="0"><span class="num">1</span><span class="empty-mark">＋</span></div>
+  <div class="slot" data-slot="1"><span class="num">2</span><span class="empty-mark">＋</span></div>
+  <div class="slot" data-slot="2"><span class="num">3</span><span class="empty-mark">＋</span></div>
+  <button id="spin-btn" title="スピン波">🌀</button>
+  <div class="slot" data-slot="3"><span class="num">4</span><span class="empty-mark">＋</span></div>
+  <div class="slot" data-slot="4"><span class="num">5</span><span class="empty-mark">＋</span></div>
+  <div class="slot" data-slot="5"><span class="num">6</span><span class="empty-mark">＋</span></div>
+</div>
+<div id="drop-hint">画像をドロップしてスロットに追加</div>
+<input type="file" id="file-input" accept="image/*">
+
+<script type="importmap">
+{ "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ================= 描画セットアップ =================
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.domElement.classList.add('gl');
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04060d);
+const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 800);
+
+// 背景の星
+{
+  const pos = new Float32Array(700 * 3);
+  for (let i = 0; i < 700; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 500;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 300;
+    pos[i * 3 + 2] = -120 - Math.random() * 250;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x8fa8cf, size: 0.9 })));
+}
+
+// ================= 画像スロット =================
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const TARGET_CUBES = isTouch ? 2200 : 4800;
+const MAXTEX = 1024;
+
+const slots = new Array(6).fill(null).map(() => ({ tex: null, user: false, thumb: null }));
+let wallAspect = 3 / 4;           // w/h。最初のユーザー画像で確定
+let aspectLocked = false;
+let current = 0;                  // 表示中のスロット番号
+
+// 内蔵プロシージャル画像（未アップロード時のデモ用）
+function makeDefaultArt(idx) {
+  const w = 768, h = 1024;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const palettes = [
+    ['#0b1c3a', '#2b6cb0', '#8fd8ff'], ['#2a0b3a', '#8b30b0', '#ffb0e8'],
+    ['#0b3a2c', '#30b07c', '#c8ffb0'], ['#3a250b', '#b07c30', '#ffe8b0'],
+    ['#3a0b14', '#b03050', '#ffb0c0'], ['#0b303a', '#30a0b0', '#b0f4ff'],
+  ][idx];
+  const grad = g.createLinearGradient(0, 0, w * (idx % 2 ? 1 : 0.2), h);
+  grad.addColorStop(0, palettes[0]);
+  grad.addColorStop(0.55, palettes[1]);
+  grad.addColorStop(1, palettes[2]);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, w, h);
+  // 模様（スロットごとに変化）
+  g.globalAlpha = 0.25;
+  for (let i = 0; i < 46; i++) {
+    g.fillStyle = i % 2 ? palettes[2] : '#ffffff';
+    const x = ((i * 137 + idx * 61) % w), y = ((i * 211 + idx * 97) % h);
+    if (idx % 3 === 0) { g.beginPath(); g.arc(x, y, 8 + (i % 5) * 14, 0, Math.PI * 2); g.fill(); }
+    else if (idx % 3 === 1) { g.fillRect(x, y, 90, 6 + (i % 4) * 5); }
+    else { g.save(); g.translate(x, y); g.rotate(i); g.fillRect(-30, -30, 60, 60); g.restore(); }
+  }
+  g.globalAlpha = 0.85;
+  g.fillStyle = 'rgba(255,255,255,0.82)';
+  g.font = 'bold 200px monospace';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(String(idx + 1), w / 2, h / 2);
+  g.globalAlpha = 1;
+  return c;
+}
+
+function coverCrop(source, aspect) {
+  const sw = source.width, sh = source.height;
+  let cw = sw, ch = sw / aspect;
+  if (ch > sh) { ch = sh; cw = sh * aspect; }
+  const out = document.createElement('canvas');
+  out.width = Math.min(MAXTEX, Math.round(cw));
+  out.height = Math.round(out.width / aspect);
+  const g = out.getContext('2d');
+  g.drawImage(source, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, out.width, out.height);
+  return out;
+}
+
+function setSlotImage(idx, imgSource, isUser) {
+  if (isUser && !aspectLocked) {
+    wallAspect = imgSource.width / imgSource.height;
+    wallAspect = THREE.MathUtils.clamp(wallAspect, 0.45, 2.2);
+    aspectLocked = true;
+    rebuildWall();
+    // 既存スロットを新アスペクトで作り直し
+    for (let i = 0; i < 6; i++) {
+      if (i !== idx && slots[i].source) applySlotTexture(i, slots[i].source);
+    }
+  }
+  slots[idx].source = imgSource;
+  applySlotTexture(idx, imgSource);
+  slots[idx].user = isUser;
+  updateSlotUI(idx);
+}
+
+function applySlotTexture(idx, imgSource) {
+  const canvas = coverCrop(imgSource, wallAspect);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  slots[idx].tex?.dispose();
+  slots[idx].tex = tex;
+  slots[idx].thumb = canvas.toDataURL('image/jpeg', 0.6);
+  if (wallMat) wallMat.uniforms['t' + idx].value = tex;
+}
+
+function updateSlotUI(idx) {
+  const el = document.querySelector(`.slot[data-slot="${idx}"]`);
+  el.style.backgroundImage = `url(${slots[idx].thumb})`;
+  el.classList.toggle('user', slots[idx].user);
+  el.classList.toggle('active', idx === current);
+}
+function refreshActiveUI() {
+  document.querySelectorAll('.slot').forEach((el, i) => el.classList.toggle('active', i === current));
+}
+
+// 表示・巡回対象: ユーザー画像があればユーザー画像のみ、無ければ内蔵6枚
+function activeSet() {
+  const users = [0, 1, 2, 3, 4, 5].filter(i => slots[i].user);
+  return users.length ? users : [0, 1, 2, 3, 4, 5];
+}
+
+// ================= 壁（InstancedMesh + カスタムシェーダー） =================
+// 面→画像: img0=+z, img1=-z, img2=+x, img3=-x, img4=+y, img5=-y
+const FACE_QUATS = [
+  new THREE.Quaternion(),                                                       // +z
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), // -z
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2), // +x
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2),  // -x
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2),  // +y
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), // -y
+];
+
+let wallMesh = null, wallMat = null;
+let COLS = 0, ROWS = 0, NCUBES = 0;
+let cubes = []; // { quat, startQuat, targetQuat, t0, dur, kind, spinAxis, baseQuat }
+let matMs = 0;
+
+function buildShaderMaterial() {
+  const uniforms = { uGridSize: { value: new THREE.Vector2(1, 1) }, uLightDir: { value: new THREE.Vector3(-0.4, 0.5, 0.75).normalize() } };
+  for (let i = 0; i < 6; i++) uniforms['t' + i] = { value: slots[i].tex };
+  return new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: /* glsl */`
+      attribute vec2 aGrid;
+      varying vec3 vObjN;
+      varying vec3 vWorldN;
+      varying vec2 vUv;
+      varying vec2 vGrid;
+      void main() {
+        vObjN = normal;
+        vWorldN = normalize(mat3(instanceMatrix) * normal);
+        vUv = uv;
+        vGrid = aGrid;
+        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform sampler2D t0; uniform sampler2D t1; uniform sampler2D t2;
+      uniform sampler2D t3; uniform sampler2D t4; uniform sampler2D t5;
+      uniform vec2 uGridSize;
+      uniform vec3 uLightDir;
+      varying vec3 vObjN;
+      varying vec3 vWorldN;
+      varying vec2 vUv;
+      varying vec2 vGrid;
+      void main() {
+        vec3 n = vObjN;
+        int face;
+        vec2 t = vUv;
+        // 面判定と、正面へ回転したとき絵が正立するためのUV補正
+        if (n.z > 0.5)       { face = 0; }
+        else if (n.z < -0.5) { face = 1; t = vec2(1.0 - t.x, t.y); }
+        else if (n.x > 0.5)  { face = 2; }
+        else if (n.x < -0.5) { face = 3; }
+        else if (n.y > 0.5)  { face = 4; t = vec2(t.x, 1.0 - t.y); }
+        else                 { face = 5; t = vec2(t.x, 1.0 - t.y); }
+        vec2 uvFinal = (vGrid + t) / uGridSize;
+        vec4 col;
+        if (face == 0) col = texture2D(t0, uvFinal);
+        else if (face == 1) col = texture2D(t1, uvFinal);
+        else if (face == 2) col = texture2D(t2, uvFinal);
+        else if (face == 3) col = texture2D(t3, uvFinal);
+        else if (face == 4) col = texture2D(t4, uvFinal);
+        else col = texture2D(t5, uvFinal);
+        // 簡易ライティング＋タイルの縁を軽く落とす
+        float light = 0.72 + 0.38 * max(dot(vWorldN, uLightDir), 0.0);
+        float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+        float edge = 0.78 + 0.22 * smoothstep(0.0, 0.07, e);
+        gl_FragColor = vec4(col.rgb * light * edge, 1.0);
+      }
+    `,
+  });
+}
+
+function rebuildWall() {
+  if (wallMesh) {
+    scene.remove(wallMesh);
+    wallMesh.geometry.dispose();
+    wallMat.dispose();
+  }
+  COLS = Math.max(8, Math.round(Math.sqrt(TARGET_CUBES * wallAspect)));
+  ROWS = Math.max(8, Math.round(COLS / wallAspect));
+  NCUBES = COLS * ROWS;
+
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const grid = new Float32Array(NCUBES * 2);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const i = r * COLS + c;
+    grid[i * 2] = c;
+    grid[i * 2 + 1] = ROWS - 1 - r; // r=0 は最上段。テクスチャは v=0 が下端なので反転して割り当てる
+  }
+  const igeo = new THREE.InstancedBufferGeometry().copy(geo);
+  igeo.instanceCount = NCUBES;
+  igeo.setAttribute('aGrid', new THREE.InstancedBufferAttribute(grid, 2));
+
+  wallMat = buildShaderMaterial();
+  wallMat.uniforms.uGridSize.value.set(COLS, ROWS);
+  for (let i = 0; i < 6; i++) wallMat.uniforms['t' + i].value = slots[i].tex;
+
+  wallMesh = new THREE.InstancedMesh(igeo, wallMat, NCUBES);
+  wallMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(wallMesh);
+
+  cubes = new Array(NCUBES);
+  const q0 = FACE_QUATS[current].clone();
+  for (let i = 0; i < NCUBES; i++) {
+    cubes[i] = {
+      quat: q0.clone(), startQuat: q0.clone(), targetQuat: q0.clone(),
+      t0: -1, dur: 0.5, kind: 'flip', spinAngle: 0, pop: 0,
+    };
+  }
+  syncAllMatrices(true);
+  fitCamera();
+}
+
+const _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _p = new THREE.Vector3();
+const _s = new THREE.Vector3(0.96, 0.96, 0.96);
+
+function cubeXY(i) {
+  const c = i % COLS, r = (i / COLS) | 0;
+  return [c - (COLS - 1) / 2, (ROWS - 1) / 2 - r];
+}
+
+function composeCube(i, quat, pop) {
+  const [x, y] = cubeXY(i);
+  _p.set(x, y, pop);
+  _m.compose(_p, quat, _s);
+  wallMesh.setMatrixAt(i, _m);
+}
+
+function syncAllMatrices() {
+  for (let i = 0; i < NCUBES; i++) composeCube(i, cubes[i].quat, 0);
+  wallMesh.instanceMatrix.needsUpdate = true;
+}
+
+// ================= さざなみ切り替え =================
+const WAVE_SPEED = 42;   // cubes/sec
+const FLIP_DUR = 0.55;
+let animating = 0;
+
+function easeBack(u) {
+  const s = 1.35;
+  const v = u - 1;
+  return 1 + v * v * ((s + 1) * v + s);
+}
+
+function rippleTo(target, ox, oy, kind = 'flip') {
+  const now = clock.elapsedTime;
+  const tq = FACE_QUATS[target];
+  for (let i = 0; i < NCUBES; i++) {
+    const [x, y] = cubeXY(i);
+    const d = Math.hypot(x - ox, y - oy);
+    const cb = cubes[i];
+    // 進行中のアニメは現在姿勢から継続
+    cb.startQuat.copy(cb.quat);
+    cb.targetQuat.copy(tq);
+    cb.t0 = now + d / WAVE_SPEED;
+    cb.dur = FLIP_DUR;
+    cb.kind = kind;
+    cb.done = false;
+  }
+  if (kind === 'flip') { current = target; refreshActiveUI(); }
+  sfx('ripple');
+}
+
+function stepCubes() {
+  const now = clock.elapsedTime;
+  const t0 = performance.now();
+  let any = false;
+  let count = 0;
+  for (let i = 0; i < NCUBES; i++) {
+    const cb = cubes[i];
+    if (cb.done || cb.t0 < 0) continue;
+    const u = (now - cb.t0) / cb.dur;
+    if (u < 0) { any = true; continue; }
+    count++;
+    if (u >= 1) {
+      if (cb.kind === 'spin') cb.quat.copy(cb.startQuat);
+      else cb.quat.copy(cb.targetQuat);
+      composeCube(i, cb.quat, 0);
+      cb.done = true;
+      any = true;
+      continue;
+    }
+    if (cb.kind === 'spin') {
+      _q.setFromAxisAngle(AXIS_Y, Math.PI * 2 * smooth(u)); // u=1 でちょうど一回転して元の姿勢へ
+      cb.quat.copy(cb.startQuat).multiply(_q);
+    } else {
+      const e = easeBack(u);
+      cb.quat.copy(cb.startQuat).slerp(cb.targetQuat, Math.min(1, Math.max(0, e)));
+    }
+    composeCube(i, cb.quat, Math.sin(Math.PI * Math.min(1, u)) * 1.1);
+    any = true;
+  }
+  animating = count;
+  if (any) wallMesh.instanceMatrix.needsUpdate = true;
+  matMs = matMs * 0.9 + (performance.now() - t0) * 0.1;
+}
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
+function smooth(u) { return u * u * (3 - 2 * u); }
+
+// ================= カメラ =================
+function fitCamera() {
+  const vfov = THREE.MathUtils.degToRad(camera.fov);
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  const dz = Math.max(
+    (ROWS / 2 + 1) / Math.tan(vfov / 2),
+    (COLS / 2 + 1) / Math.tan(hfov / 2)
+  ) * 1.06;
+  camera.position.set(0, 0, dz);
+  camera.lookAt(0, 0, 0);
+}
+let parallax = { x: 0, y: 0 };
+addEventListener('pointermove', e => {
+  parallax.x = (e.clientX / innerWidth - 0.5) * 2;
+  parallax.y = (e.clientY / innerHeight - 0.5) * 2;
+});
+
+// ================= 入力 =================
+const raycaster = new THREE.Raycaster();
+const wallPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.5);
+function wallClickAt(clientX, clientY) {
+  const ndc = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(wallPlane, hit)) return;
+  const ox = THREE.MathUtils.clamp(hit.x, -COLS / 2, COLS / 2);
+  const oy = THREE.MathUtils.clamp(hit.y, -ROWS / 2, ROWS / 2);
+  const set = activeSet();
+  if (set.length === 1) {
+    rippleTo(current, ox, oy, 'spin');
+  } else {
+    const next = set[(set.indexOf(current) + 1) % set.length];
+    rippleTo(next, ox, oy, 'flip');
+  }
+}
+renderer.domElement.addEventListener('pointerdown', e => wallClickAt(e.clientX, e.clientY));
+
+addEventListener('keydown', e => {
+  const n = Number(e.key);
+  if (n >= 1 && n <= 6) trySwitchTo(n - 1);
+});
+function trySwitchTo(idx) {
+  if (!slots[idx].tex) return;
+  if (slots[idx].user || activeSet().length === 6) {
+    if (idx === current) rippleTo(idx, 0, 0, 'spin');
+    else rippleTo(idx, 0, 0, 'flip');
+  }
+}
+
+// スロットUI
+let pickTarget = 0;
+const fileInput = document.getElementById('file-input');
+document.querySelectorAll('.slot').forEach(el => {
+  const idx = Number(el.dataset.slot);
+  el.addEventListener('click', () => {
+    if (slots[idx].user) trySwitchTo(idx);
+    else { pickTarget = idx; fileInput.click(); }
+  });
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+  el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    el.classList.remove('dragover');
+    document.getElementById('drop-hint').classList.remove('show');
+    const f = e.dataTransfer.files[0];
+    if (f) loadFile(f, idx);
+  });
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0], pickTarget);
+  fileInput.value = '';
+});
+document.getElementById('spin-btn').addEventListener('click', () => rippleTo(current, 0, 0, 'spin'));
+
+// ページ全体へのドロップ: 空きスロット（無ければ次のスロット）へ
+addEventListener('dragover', e => {
+  e.preventDefault();
+  document.getElementById('drop-hint').classList.add('show');
+});
+addEventListener('dragleave', e => {
+  if (e.relatedTarget === null) document.getElementById('drop-hint').classList.remove('show');
+});
+addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('drop-hint').classList.remove('show');
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')).slice(0, 6);
+  let cursor = 0;
+  for (const f of files) {
+    let idx = slots.findIndex((s, i) => i >= cursor && !s.user);
+    if (idx < 0) idx = cursor % 6;
+    cursor = idx + 1;
+    loadFile(f, idx);
+  }
+});
+
+function loadFile(file, idx) {
+  if (!file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    setSlotImage(idx, img, true);
+    trySwitchTo(idx);
+    sfx('load');
+  };
+  img.src = url;
+}
+
+// ================= サウンド =================
+let audioCtx = null;
+function sfx(kind) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    if (kind === 'ripple') {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(320, t);
+      o.frequency.exponentialRampToValueAtTime(720, t + 0.5);
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.65);
+    } else if (kind === 'load') {
+      for (const [f, d] of [[660, 0], [880, 0.08]]) {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.09, t + d);
+        g.gain.exponentialRampToValueAtTime(0.001, t + d + 0.12);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t + d); o.stop(t + d + 0.15);
+      }
+    }
+  } catch (_) { /* 音は演出のみ */ }
+}
+
+// ================= 初期化・ループ =================
+for (let i = 0; i < 6; i++) setSlotImage(i, makeDefaultArt(i), false);
+rebuildWall();
+refreshActiveUI();
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  clock.getDelta();
+  stepCubes();
+
+  // マウスパララックス
+  const bx = parallax.x * COLS * 0.04, by = -parallax.y * ROWS * 0.03;
+  camera.position.x += (bx - camera.position.x) * 0.06;
+  camera.position.y += (by - camera.position.y) * 0.06;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  fitCamera();
+});
+
+// ================= テスト用フック =================
+window.__wall = {
+  grid: () => ({ cols: COLS, rows: ROWS, n: NCUBES }),
+  current: () => current,
+  animating: () => animating,
+  matMs: () => matMs,
+  aspect: () => wallAspect,
+  activeSet,
+  switchTo: trySwitchTo,
+  clickCenter() { wallClickAt(innerWidth / 2, innerHeight / 2); },
+  loadDataURL(idx, dataURL, cb) {
+    const img = new Image();
+    img.onload = () => { setSlotImage(idx, img, true); cb?.(); };
+    img.src = dataURL;
+    return true;
+  },
+  spin() { rippleTo(current, 0, 0, 'spin'); },
+};
+</script>
+</body>
+</html>
