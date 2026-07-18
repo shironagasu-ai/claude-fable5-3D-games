@@ -58,16 +58,45 @@
   }
   #drop-hint.show { display: flex; }
   input[type=file] { display: none; }
+  #patterns {
+    position: fixed; bottom: 108px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; z-index: 10; flex-wrap: wrap; justify-content: center;
+  }
+  #patterns button {
+    font-family: inherit; font-size: 11px; letter-spacing: 1px; cursor: pointer;
+    padding: 6px 12px; border-radius: 999px;
+    color: #9fdcff; background: rgba(10, 18, 32, 0.75);
+    border: 1px solid rgba(120, 190, 255, 0.35);
+    transition: border-color 0.12s, color 0.12s, box-shadow 0.12s;
+  }
+  #patterns button:hover { border-color: rgba(140, 210, 255, 0.8); }
+  #patterns button.on {
+    color: #8fffce; border-color: #8fffce;
+    box-shadow: 0 0 10px rgba(100, 255, 190, 0.4);
+  }
+  #patterns button#cam-btn.on {
+    color: #ffd27f; border-color: #ffd27f;
+    box-shadow: 0 0 10px rgba(255, 210, 130, 0.45);
+  }
 </style>
 </head>
 <body>
 <div id="title">
   <div class="name">FLIP WALL</div>
   <div class="hint">画像をドロップ / 下のスロットをクリックでアップロード（ブラウザ内処理・送信なし）<br>
-  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波</div>
+  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波　C: シネマカメラ</div>
 </div>
 <div id="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></div>
 
+<div id="patterns">
+  <button data-p="auto" class="on">おまかせ</button>
+  <button data-p="ripple">波紋</button>
+  <button data-p="sweep">スイープ</button>
+  <button data-p="spiral">渦</button>
+  <button data-p="random">ランダム</button>
+  <button data-p="assemble">集合</button>
+  <button id="cam-btn">📷 シネマ</button>
+</div>
 <div id="slots">
   <div class="slot" data-slot="0"><span class="num">1</span><span class="empty-mark">＋</span></div>
   <div class="slot" data-slot="1"><span class="num">2</span><span class="empty-mark">＋</span></div>
@@ -314,16 +343,18 @@ function rebuildWall() {
   scene.add(wallMesh);
 
   cubes = new Array(NCUBES);
+  scatter = new Float32Array(NCUBES * 3);
   const q0 = FACE_QUATS[current].clone();
   for (let i = 0; i < NCUBES; i++) {
     cubes[i] = {
       quat: q0.clone(), startQuat: q0.clone(), targetQuat: q0.clone(),
-      t0: -1, dur: 0.5, kind: 'flip', spinAngle: 0, pop: 0,
+      t0: -1, dur: 0.5, kind: 'flip', done: true,
     };
   }
   syncAllMatrices(true);
   fitCamera();
 }
+let scatter = new Float32Array(0);
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -335,22 +366,24 @@ function cubeXY(i) {
   return [c - (COLS - 1) / 2, (ROWS - 1) / 2 - r];
 }
 
-function composeCube(i, quat, pop) {
+function composeCube(i, quat, ox, oy, oz) {
   const [x, y] = cubeXY(i);
-  _p.set(x, y, pop);
+  _p.set(x + ox, y + oy, oz);
   _m.compose(_p, quat, _s);
   wallMesh.setMatrixAt(i, _m);
 }
 
 function syncAllMatrices() {
-  for (let i = 0; i < NCUBES; i++) composeCube(i, cubes[i].quat, 0);
+  for (let i = 0; i < NCUBES; i++) composeCube(i, cubes[i].quat, 0, 0, 0);
   wallMesh.instanceMatrix.needsUpdate = true;
 }
 
-// ================= さざなみ切り替え =================
+// ================= 切り替えアニメーション =================
 const WAVE_SPEED = 42;   // cubes/sec
 const FLIP_DUR = 0.55;
 let animating = 0;
+const PATTERNS = ['ripple', 'sweep', 'spiral', 'random', 'assemble'];
+let pattern = 'auto';
 
 function easeBack(u) {
   const s = 1.35;
@@ -358,22 +391,55 @@ function easeBack(u) {
   return 1 + v * v * ((s + 1) * v + s);
 }
 
-function rippleTo(target, ox, oy, kind = 'flip') {
+// mode: 'spin' | パターン名 | undefined（選択中のパターン。auto はランダム解決）
+function triggerWave(target, ox, oy, mode) {
+  const pat = mode ?? (pattern === 'auto' ? PATTERNS[(Math.random() * PATTERNS.length) | 0] : pattern);
   const now = clock.elapsedTime;
   const tq = FACE_QUATS[target];
+  const maxDim = Math.max(COLS, ROWS);
+  // スイープ方向（左右上下・斜めからランダム）
+  const sw = [[1, 0], [-1, 0], [0, -1], [0, 1], [0.7071, -0.7071], [-0.7071, 0.7071]][(Math.random() * 6) | 0];
+  let minP = Infinity, maxP = -Infinity;
+  if (pat === 'sweep') {
+    for (const [px, py] of [[-COLS / 2, -ROWS / 2], [COLS / 2, -ROWS / 2], [-COLS / 2, ROWS / 2], [COLS / 2, ROWS / 2]]) {
+      const p = px * sw[0] + py * sw[1];
+      minP = Math.min(minP, p); maxP = Math.max(maxP, p);
+    }
+  }
   for (let i = 0; i < NCUBES; i++) {
     const [x, y] = cubeXY(i);
-    const d = Math.hypot(x - ox, y - oy);
     const cb = cubes[i];
+    let delay = 0, dur = FLIP_DUR, kind = pat === 'spin' ? 'spin' : 'flip';
+    if (pat === 'ripple' || pat === 'spin') {
+      delay = Math.hypot(x - ox, y - oy) / WAVE_SPEED;
+    } else if (pat === 'sweep') {
+      delay = ((x * sw[0] + y * sw[1]) - minP) / (maxP - minP) * 1.35;
+    } else if (pat === 'spiral') {
+      const a = (Math.atan2(y - oy * 0.3, x - ox * 0.3) + Math.PI) / (Math.PI * 2);
+      delay = a * 0.85 + Math.hypot(x, y) / (maxDim * 0.7) * 1.0;
+    } else if (pat === 'random') {
+      delay = Math.random() * 1.2;
+    } else if (pat === 'assemble') {
+      delay = Math.random() * 0.35 + Math.hypot(x - ox, y - oy) / maxDim * 0.3;
+      dur = 1.35;
+      kind = 'assemble';
+      // 飛散ベクトル: 手前（カメラ側）に強めのバイアス
+      const th = Math.random() * Math.PI * 2;
+      const r = maxDim * (0.15 + Math.random() * 0.4);
+      scatter[i * 3] = Math.cos(th) * r;
+      scatter[i * 3 + 1] = Math.sin(th) * r * 0.7;
+      scatter[i * 3 + 2] = 4 + Math.random() * maxDim * 0.45;
+    }
     // 進行中のアニメは現在姿勢から継続
     cb.startQuat.copy(cb.quat);
     cb.targetQuat.copy(tq);
-    cb.t0 = now + d / WAVE_SPEED;
-    cb.dur = FLIP_DUR;
+    cb.t0 = now + delay;
+    cb.dur = dur;
     cb.kind = kind;
     cb.done = false;
   }
-  if (kind === 'flip') { current = target; refreshActiveUI(); }
+  if (pat !== 'spin') { current = target; refreshActiveUI(); }
+  autoT = 0; // 手動トリガー直後の自動切替を防ぐ
   sfx('ripple');
 }
 
@@ -391,7 +457,7 @@ function stepCubes() {
     if (u >= 1) {
       if (cb.kind === 'spin') cb.quat.copy(cb.startQuat);
       else cb.quat.copy(cb.targetQuat);
-      composeCube(i, cb.quat, 0);
+      composeCube(i, cb.quat, 0, 0, 0);
       cb.done = true;
       any = true;
       continue;
@@ -399,11 +465,17 @@ function stepCubes() {
     if (cb.kind === 'spin') {
       _q.setFromAxisAngle(AXIS_Y, Math.PI * 2 * smooth(u)); // u=1 でちょうど一回転して元の姿勢へ
       cb.quat.copy(cb.startQuat).multiply(_q);
+      composeCube(i, cb.quat, 0, 0, Math.sin(Math.PI * u) * 1.1);
+    } else if (cb.kind === 'assemble') {
+      const e = smooth(u);
+      cb.quat.copy(cb.startQuat).slerp(cb.targetQuat, e);
+      const s = Math.sin(Math.PI * e); // 飛散して戻る
+      composeCube(i, cb.quat, scatter[i * 3] * s, scatter[i * 3 + 1] * s, scatter[i * 3 + 2] * s);
     } else {
       const e = easeBack(u);
       cb.quat.copy(cb.startQuat).slerp(cb.targetQuat, Math.min(1, Math.max(0, e)));
+      composeCube(i, cb.quat, 0, 0, Math.sin(Math.PI * u) * 1.1);
     }
-    composeCube(i, cb.quat, Math.sin(Math.PI * Math.min(1, u)) * 1.1);
     any = true;
   }
   animating = count;
@@ -430,6 +502,77 @@ addEventListener('pointermove', e => {
   parallax.y = (e.clientY / innerHeight - 0.5) * 2;
 });
 
+// ================= シネマカメラ =================
+const BASE_FOV = 46;
+let camMode = 'front';
+let shot = null, shotT = 0, lastShotIdx = -1, autoT = 0;
+
+const lerp = (a, b, t) => a + (b - a) * t;
+function easeIO(u) { return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; }
+function frontDist() {
+  const vfov = THREE.MathUtils.degToRad(BASE_FOV);
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  return Math.max((ROWS / 2 + 1) / Math.tan(vfov / 2), (COLS / 2 + 1) / Math.tan(hfov / 2)) * 1.06;
+}
+
+// ベンチマークデモ風のカット割り。位置・注視点は u∈[0,1] の関数
+function makeShots() {
+  const W = COLS, H = ROWS, D = frontDist();
+  return [
+    { // 低空ドリー（壁面すれすれを横移動）
+      dur: 7, fov: 40,
+      pos: u => [lerp(-W * 0.35, W * 0.35, u), -H * 0.28, 5.5],
+      look: u => [lerp(-W * 0.1, W * 0.55, u), -H * 0.05, 0],
+    },
+    { // コーナーオービット
+      dur: 8, fov: 50,
+      pos: u => { const a = lerp(-0.85, -0.2, u); return [Math.sin(a) * W * 0.8, lerp(-H * 0.15, H * 0.28, u), Math.cos(a) * W * 0.8]; },
+      look: () => [0, 0, 0],
+    },
+    { // クレーンダウン（上空から降りる）
+      dur: 7, fov: 45,
+      pos: u => [W * 0.12, lerp(H * 0.6, -H * 0.05, u), lerp(9, 14, u)],
+      look: u => [0, lerp(H * 0.15, 0, u), 0],
+    },
+    { // エッジ滑走（ほぼ真横からキューブの厚みを見る）
+      dur: 7, fov: 38,
+      pos: u => [W * 0.55, lerp(H * 0.3, -H * 0.3, u), 3.2],
+      look: u => [W * 0.1, lerp(H * 0.12, -H * 0.12, u), 0.8],
+    },
+    { // 引きの微オービット
+      dur: 8, fov: BASE_FOV,
+      pos: u => { const a = lerp(0.22, -0.22, u); return [Math.sin(a) * D, H * 0.06, Math.cos(a) * D]; },
+      look: () => [0, 0, 0],
+    },
+    { // 接写プッシュイン
+      dur: 6, fov: 35,
+      pos: u => [lerp(-W * 0.12, W * 0.04, u), lerp(-H * 0.12, H * 0.04, u), lerp(8, 3.4, u)],
+      look: u => [lerp(-W * 0.12, W * 0.04, u) + 1.5, lerp(-H * 0.12, H * 0.04, u) + 1, 0],
+    },
+  ];
+}
+
+function nextShot() {
+  const shots = makeShots();
+  let idx;
+  do { idx = (Math.random() * shots.length) | 0; } while (idx === lastShotIdx && shots.length > 1);
+  lastShotIdx = idx;
+  shot = shots[idx];
+  shotT = 0;
+}
+
+function toggleCamera() {
+  camMode = camMode === 'front' ? 'cinema' : 'front';
+  document.getElementById('cam-btn').classList.toggle('on', camMode === 'cinema');
+  if (camMode === 'cinema') { nextShot(); autoT = 0; }
+  else {
+    camera.fov = BASE_FOV;
+    camera.updateProjectionMatrix();
+    fitCamera();
+  }
+}
+addEventListener('keydown', e => { if (e.code === 'KeyC') toggleCamera(); });
+
 // ================= 入力 =================
 const raycaster = new THREE.Raycaster();
 const wallPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.5);
@@ -442,10 +585,10 @@ function wallClickAt(clientX, clientY) {
   const oy = THREE.MathUtils.clamp(hit.y, -ROWS / 2, ROWS / 2);
   const set = activeSet();
   if (set.length === 1) {
-    rippleTo(current, ox, oy, 'spin');
+    triggerWave(current, ox, oy, 'spin');
   } else {
     const next = set[(set.indexOf(current) + 1) % set.length];
-    rippleTo(next, ox, oy, 'flip');
+    triggerWave(next, ox, oy);
   }
 }
 renderer.domElement.addEventListener('pointerdown', e => wallClickAt(e.clientX, e.clientY));
@@ -457,8 +600,8 @@ addEventListener('keydown', e => {
 function trySwitchTo(idx) {
   if (!slots[idx].tex) return;
   if (slots[idx].user || activeSet().length === 6) {
-    if (idx === current) rippleTo(idx, 0, 0, 'spin');
-    else rippleTo(idx, 0, 0, 'flip');
+    if (idx === current) triggerWave(idx, 0, 0, 'spin');
+    else triggerWave(idx, 0, 0);
   }
 }
 
@@ -485,7 +628,16 @@ fileInput.addEventListener('change', () => {
   if (fileInput.files[0]) loadFile(fileInput.files[0], pickTarget);
   fileInput.value = '';
 });
-document.getElementById('spin-btn').addEventListener('click', () => rippleTo(current, 0, 0, 'spin'));
+document.getElementById('spin-btn').addEventListener('click', () => triggerWave(current, 0, 0, 'spin'));
+
+// パターン選択とカメラ切替
+document.querySelectorAll('#patterns button[data-p]').forEach(el => {
+  el.addEventListener('click', () => {
+    pattern = el.dataset.p;
+    document.querySelectorAll('#patterns button[data-p]').forEach(b => b.classList.toggle('on', b === el));
+  });
+});
+document.getElementById('cam-btn').addEventListener('click', toggleCamera);
 
 // ページ全体へのドロップ: 空きスロット（無ければ次のスロット）へ
 addEventListener('dragover', e => {
@@ -559,14 +711,32 @@ refreshActiveUI();
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
-  clock.getDelta();
+  const dt = Math.min(clock.getDelta(), 0.05);
   stepCubes();
 
-  // マウスパララックス
-  const bx = parallax.x * COLS * 0.04, by = -parallax.y * ROWS * 0.03;
-  camera.position.x += (bx - camera.position.x) * 0.06;
-  camera.position.y += (by - camera.position.y) * 0.06;
-  camera.lookAt(0, 0, 0);
+  if (camMode === 'cinema') {
+    shotT += dt;
+    if (!shot || shotT > shot.dur) nextShot();
+    const u = easeIO(Math.min(1, shotT / shot.dur));
+    const p = shot.pos(u), l = shot.look(u);
+    camera.position.set(p[0], p[1], p[2]);
+    camera.lookAt(l[0], l[1], l[2]);
+    if (camera.fov !== shot.fov) { camera.fov = shot.fov; camera.updateProjectionMatrix(); }
+    // アトラクトモード: 一定間隔で自動的に次の絵へ
+    autoT += dt;
+    if (autoT > 9) {
+      autoT = 0;
+      const set = activeSet();
+      if (set.length === 1) triggerWave(current, 0, 0, 'spin');
+      else triggerWave(set[(set.indexOf(current) + 1) % set.length], 0, 0);
+    }
+  } else {
+    // マウスパララックス
+    const bx = parallax.x * COLS * 0.04, by = -parallax.y * ROWS * 0.03;
+    camera.position.x += (bx - camera.position.x) * 0.06;
+    camera.position.y += (by - camera.position.y) * 0.06;
+    camera.lookAt(0, 0, 0);
+  }
 
   renderer.render(scene, camera);
 }
@@ -595,7 +765,15 @@ window.__wall = {
     img.src = dataURL;
     return true;
   },
-  spin() { rippleTo(current, 0, 0, 'spin'); },
+  spin() { triggerWave(current, 0, 0, 'spin'); },
+  setPattern(p) { pattern = p; },
+  getPattern: () => pattern,
+  trigger(target, p) { triggerWave(target, 0, 0, p); },
+  camMode: () => camMode,
+  toggleCamera,
+  camPos: () => camera.position.toArray(),
+  shotDur: () => (shot ? shot.dur : 0),
+  forceNextShot: nextShot,
 };
 </script>
 </body>
