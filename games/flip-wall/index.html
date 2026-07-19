@@ -18,9 +18,14 @@
   #title .hint { font-size: 11px; letter-spacing: 1px; opacity: 0.65; margin-top: 4px; line-height: 1.7; }
   #back {
     position: fixed; top: 16px; right: 18px; z-index: 10;
-    font-size: 11px; letter-spacing: 1px;
+    font-size: 11px; letter-spacing: 1px; text-align: right;
   }
   #back a { color: #9fdcff; opacity: 0.7; }
+  #fps {
+    margin-top: 8px; color: #8fffce; font-size: 14px; letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(100, 255, 190, 0.6);
+  }
+  #fps .sub { font-size: 10px; opacity: 0.6; color: #9fdcff; }
 
   #slots {
     position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
@@ -58,16 +63,96 @@
   }
   #drop-hint.show { display: flex; }
   input[type=file] { display: none; }
+
+  .chipbar {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; z-index: 10; flex-wrap: wrap; justify-content: center;
+  }
+  #patterns { bottom: 108px; }
+  #quality { bottom: 146px; }
+  .chipbar button, .chipbar .lbl {
+    font-family: inherit; font-size: 11px; letter-spacing: 1px;
+    padding: 6px 12px; border-radius: 999px;
+  }
+  .chipbar .lbl { color: #6f8cad; padding: 6px 2px; }
+  .chipbar button {
+    cursor: pointer; color: #9fdcff; background: rgba(10, 18, 32, 0.75);
+    border: 1px solid rgba(120, 190, 255, 0.35);
+    transition: border-color 0.12s, color 0.12s, box-shadow 0.12s;
+  }
+  .chipbar button:hover { border-color: rgba(140, 210, 255, 0.8); }
+  .chipbar button.on {
+    color: #8fffce; border-color: #8fffce;
+    box-shadow: 0 0 10px rgba(100, 255, 190, 0.4);
+  }
+  .chipbar button#cam-btn.on, .chipbar button#bench-btn.on {
+    color: #ffd27f; border-color: #ffd27f;
+    box-shadow: 0 0 10px rgba(255, 210, 130, 0.45);
+  }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: radial-gradient(ellipse at center, rgba(4, 8, 20, 0.7), rgba(0, 0, 0, 0.92));
+    color: #cfeaff; z-index: 40; transition: opacity 0.3s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay h1 {
+    font-size: clamp(26px, 5vw, 42px); letter-spacing: 8px;
+    color: #7fd0ff; text-shadow: 0 0 24px rgba(80, 180, 255, 0.9);
+  }
+  .overlay table { border-collapse: collapse; font-size: 14px; }
+  .overlay th, .overlay td { padding: 8px 18px; text-align: right; letter-spacing: 1px; }
+  .overlay th { color: #6f8cad; font-weight: normal; font-size: 11px; border-bottom: 1px solid rgba(120,190,255,0.3); }
+  .overlay td { color: #cfeaff; }
+  .overlay td.fps { color: #8fffce; }
+  .overlay .score-line { font-size: 22px; color: #ffd27f; text-shadow: 0 0 12px rgba(255, 190, 80, 0.8); }
+  .overlay .note { font-size: 11px; opacity: 0.6; letter-spacing: 1px; }
+  .overlay button {
+    cursor: pointer; font-family: inherit; font-size: 14px; letter-spacing: 3px;
+    padding: 12px 36px; color: #001624;
+    background: linear-gradient(180deg, #8fd8ff, #3aa0e0);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 20px rgba(80, 180, 255, 0.55);
+  }
+  .overlay button:active { transform: scale(0.96); }
+  #bench-progress {
+    position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
+    color: #ffd27f; font-size: 13px; letter-spacing: 3px; z-index: 35;
+    text-shadow: 0 0 10px rgba(255, 190, 80, 0.8); display: none;
+  }
+  #bench-progress.show { display: block; }
 </style>
 </head>
 <body>
 <div id="title">
   <div class="name">FLIP WALL</div>
   <div class="hint">画像をドロップ / 下のスロットをクリックでアップロード（ブラウザ内処理・送信なし）<br>
-  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波</div>
+  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波　C: シネマカメラ</div>
 </div>
-<div id="back"><a href="../../index.html">&larr; ゲーム一覧へ戻る</a></div>
+<div id="back">
+  <a href="../../index.html">&larr; ゲーム一覧へ戻る</a>
+  <div id="fps">-- <span class="sub">FPS</span></div>
+</div>
 
+<div class="chipbar" id="quality">
+  <span class="lbl">粒子数</span>
+  <button data-q="5000" class="on">5K</button>
+  <button data-q="20000">20K</button>
+  <button data-q="50000">50K</button>
+  <button data-q="100000">100K</button>
+  <button data-q="200000">200K</button>
+  <button id="bench-btn">🏁 ベンチマーク</button>
+</div>
+<div class="chipbar" id="patterns">
+  <button data-p="auto" class="on">おまかせ</button>
+  <button data-p="ripple">波紋</button>
+  <button data-p="sweep">スイープ</button>
+  <button data-p="spiral">渦</button>
+  <button data-p="random">ランダム</button>
+  <button data-p="assemble">集合</button>
+  <button id="cam-btn">📷 シネマ</button>
+</div>
 <div id="slots">
   <div class="slot" data-slot="0"><span class="num">1</span><span class="empty-mark">＋</span></div>
   <div class="slot" data-slot="1"><span class="num">2</span><span class="empty-mark">＋</span></div>
@@ -78,7 +163,16 @@
   <div class="slot" data-slot="5"><span class="num">6</span><span class="empty-mark">＋</span></div>
 </div>
 <div id="drop-hint">画像をドロップしてスロットに追加</div>
+<div id="bench-progress">BENCHMARK RUNNING…</div>
 <input type="file" id="file-input" accept="image/*">
+
+<div class="overlay hidden" id="bench-overlay">
+  <h1>FLIP MARK</h1>
+  <table id="bench-table"></table>
+  <div class="score-line" id="bench-score"></div>
+  <div class="note">スコア = Σ(粒子数×平均FPS)/100,000　このブラウザ・この画面での実測値</div>
+  <button onclick="document.getElementById('bench-overlay').classList.add('hidden')">CLOSE</button>
+</div>
 
 <script type="importmap">
 { "imports": { "three": "../../vendor/three-0.170.0.module.min.js" } }
@@ -95,32 +189,30 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x04060d);
-const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 800);
+const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 1200);
 
-// 背景の星
 {
   const pos = new Float32Array(700 * 3);
   for (let i = 0; i < 700; i++) {
-    pos[i * 3] = (Math.random() - 0.5) * 500;
-    pos[i * 3 + 1] = (Math.random() - 0.5) * 300;
-    pos[i * 3 + 2] = -120 - Math.random() * 250;
+    pos[i * 3] = (Math.random() - 0.5) * 900;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 500;
+    pos[i * 3 + 2] = -200 - Math.random() * 400;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x8fa8cf, size: 0.9 })));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x8fa8cf, size: 1.4 })));
 }
 
 // ================= 画像スロット =================
 const isTouch = matchMedia('(pointer: coarse)').matches;
-const TARGET_CUBES = isTouch ? 2200 : 4800;
+let TARGET_CUBES = isTouch ? 2200 : 5000;
 const MAXTEX = 1024;
 
-const slots = new Array(6).fill(null).map(() => ({ tex: null, user: false, thumb: null }));
-let wallAspect = 3 / 4;           // w/h。最初のユーザー画像で確定
+const slots = new Array(6).fill(null).map(() => ({ tex: null, user: false, thumb: null, source: null }));
+let wallAspect = 3 / 4;
 let aspectLocked = false;
-let current = 0;                  // 表示中のスロット番号
+let current = 0;
 
-// 内蔵プロシージャル画像（未アップロード時のデモ用）
 function makeDefaultArt(idx) {
   const w = 768, h = 1024;
   const c = document.createElement('canvas');
@@ -137,7 +229,6 @@ function makeDefaultArt(idx) {
   grad.addColorStop(1, palettes[2]);
   g.fillStyle = grad;
   g.fillRect(0, 0, w, h);
-  // 模様（スロットごとに変化）
   g.globalAlpha = 0.25;
   for (let i = 0; i < 46; i++) {
     g.fillStyle = i % 2 ? palettes[2] : '#ffffff';
@@ -169,11 +260,10 @@ function coverCrop(source, aspect) {
 
 function setSlotImage(idx, imgSource, isUser) {
   if (isUser && !aspectLocked) {
-    wallAspect = imgSource.width / imgSource.height;
-    wallAspect = THREE.MathUtils.clamp(wallAspect, 0.45, 2.2);
+    wallAspect = THREE.MathUtils.clamp(imgSource.width / imgSource.height, 0.45, 2.2);
     aspectLocked = true;
+    slots[idx].source = imgSource;
     rebuildWall();
-    // 既存スロットを新アスペクトで作り直し
     for (let i = 0; i < 6; i++) {
       if (i !== idx && slots[i].source) applySlotTexture(i, slots[i].source);
     }
@@ -204,46 +294,113 @@ function updateSlotUI(idx) {
 function refreshActiveUI() {
   document.querySelectorAll('.slot').forEach((el, i) => el.classList.toggle('active', i === current));
 }
-
-// 表示・巡回対象: ユーザー画像があればユーザー画像のみ、無ければ内蔵6枚
 function activeSet() {
   const users = [0, 1, 2, 3, 4, 5].filter(i => slots[i].user);
   return users.length ? users : [0, 1, 2, 3, 4, 5];
 }
 
-// ================= 壁（InstancedMesh + カスタムシェーダー） =================
+// ================= クォータニオン（JS側ミラー用） =================
 // 面→画像: img0=+z, img1=-z, img2=+x, img3=-x, img4=+y, img5=-y
 const FACE_QUATS = [
-  new THREE.Quaternion(),                                                       // +z
-  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), // -z
-  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2), // +x
-  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2),  // -x
-  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2),  // +y
-  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), // -y
-];
+  new THREE.Quaternion(),
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI),
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2),
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2),
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2),
+  new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2),
+].map(q => [q.x, q.y, q.z, q.w]);
 
-let wallMesh = null, wallMat = null;
+function smooth(u) { return u * u * (3 - 2 * u); }
+function easeBack(u) {
+  const s = 1.35, v = u - 1;
+  return 1 + v * v * ((s + 1) * v + s);
+}
+// out = nlerp(a, b, t)（配列4要素・符号合わせ）
+function nlerp(out, o, a, ai, b, bi, t) {
+  const dot = a[ai] * b[bi] + a[ai + 1] * b[bi + 1] + a[ai + 2] * b[bi + 2] + a[ai + 3] * b[bi + 3];
+  const s = dot < 0 ? -1 : 1;
+  let x = a[ai] + (b[bi] * s - a[ai]) * t;
+  let y = a[ai + 1] + (b[bi + 1] * s - a[ai + 1]) * t;
+  let z = a[ai + 2] + (b[bi + 2] * s - a[ai + 2]) * t;
+  let w = a[ai + 3] + (b[bi + 3] * s - a[ai + 3]) * t;
+  const l = Math.hypot(x, y, z, w) || 1;
+  out[o] = x / l; out[o + 1] = y / l; out[o + 2] = z / l; out[o + 3] = w / l;
+}
+// out = a * rotY(angle)
+function qmulY(out, o, a, ai, angle) {
+  const by = Math.sin(angle / 2), bw = Math.cos(angle / 2);
+  const ax = a[ai], ay = a[ai + 1], az = a[ai + 2], aw = a[ai + 3];
+  out[o] = ax * bw + az * by;
+  out[o + 1] = ay * bw + aw * by;
+  out[o + 2] = az * bw - ax * by;
+  out[o + 3] = aw * bw - ay * by;
+}
+
+// ================= 壁（GPU駆動アニメーション） =================
+// 毎フレームの CPU 仕事は uNow の更新のみ。切り替え時だけ属性を書き換える。
+let wallMesh = null, wallMat = null, wallGeo = null;
 let COLS = 0, ROWS = 0, NCUBES = 0;
-let cubes = []; // { quat, startQuat, targetQuat, t0, dur, kind, spinAxis, baseQuat }
-let matMs = 0;
+let jsQ0, jsQ1, jsStart, jsDur, jsKind; // GPU属性のJSミラー（次のトリガーで現在姿勢を計算するため）
+let aStartAttr, aDurAttr, aKindAttr, aScatterAttr, aQ0Attr, aQ1Attr;
+let triggerMs = 0;
 
 function buildShaderMaterial() {
-  const uniforms = { uGridSize: { value: new THREE.Vector2(1, 1) }, uLightDir: { value: new THREE.Vector3(-0.4, 0.5, 0.75).normalize() } };
+  const uniforms = {
+    uNow: { value: 0 },
+    uGridSize: { value: new THREE.Vector2(1, 1) },
+    uLightDir: { value: new THREE.Vector3(-0.4, 0.5, 0.75).normalize() },
+  };
   for (let i = 0; i < 6; i++) uniforms['t' + i] = { value: slots[i].tex };
   return new THREE.ShaderMaterial({
     uniforms,
     vertexShader: /* glsl */`
       attribute vec2 aGrid;
+      attribute float aStart;
+      attribute float aDur;
+      attribute float aKind;   // 0=flip 1=spin 2=assemble
+      attribute vec3 aScatter;
+      attribute vec4 aQ0;
+      attribute vec4 aQ1;
+      uniform float uNow;
+      uniform vec2 uGridSize;
       varying vec3 vObjN;
       varying vec3 vWorldN;
       varying vec2 vUv;
       varying vec2 vGrid;
+      const float PI = 3.14159265;
+
+      vec3 qrot(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+      float smoothu(float u) { return u * u * (3.0 - 2.0 * u); }
+      float easeBack(float u) { float s = 1.35; float v = u - 1.0; return 1.0 + v * v * ((s + 1.0) * v + s); }
+
       void main() {
+        float u = aDur > 0.0 ? clamp((uNow - aStart) / aDur, 0.0, 1.0) : 1.0;
+        vec4 q;
+        vec3 off = vec3(0.0);
+        vec4 q1 = aQ1 * (dot(aQ0, aQ1) < 0.0 ? -1.0 : 1.0);
+        if (aKind < 0.5) {          // flip: オーバーシュート付き nlerp + 手前ポップ
+          q = normalize(mix(aQ0, q1, easeBack(u)));
+          off.z = sin(PI * u) * 1.1;
+        } else if (aKind < 1.5) {   // spin: Y軸一回転
+          float a = PI * 2.0 * smoothu(u);
+          float by = sin(a * 0.5), bw = cos(a * 0.5);
+          q = vec4(aQ0.x * bw + aQ0.z * by,
+                   aQ0.y * bw + aQ0.w * by,
+                   aQ0.z * bw - aQ0.x * by,
+                   aQ0.w * bw - aQ0.y * by);
+          off.z = sin(PI * u) * 1.1;
+        } else {                    // assemble: 飛散して戻る
+          float e = smoothu(u);
+          q = normalize(mix(aQ0, q1, e));
+          off = aScatter * sin(PI * e);
+        }
+        vec3 base = vec3(aGrid - (uGridSize - 1.0) * 0.5, 0.0);
+        vec3 p = qrot(q, position * 0.96) + base + off;
         vObjN = normal;
-        vWorldN = normalize(mat3(instanceMatrix) * normal);
+        vWorldN = qrot(q, normal);
         vUv = uv;
         vGrid = aGrid;
-        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
       }
     `,
     fragmentShader: /* glsl */`
@@ -256,17 +413,17 @@ function buildShaderMaterial() {
       varying vec2 vUv;
       varying vec2 vGrid;
       void main() {
+        // BoxGeometry の各面 UV は「外側から見て正立」で張られているため、
+        // 回転で正面に向いた面はそのままの UV が正しい（面ごとの補正は不要）
         vec3 n = vObjN;
         int face;
-        vec2 t = vUv;
-        // 面判定と、正面へ回転したとき絵が正立するためのUV補正
-        if (n.z > 0.5)       { face = 0; }
-        else if (n.z < -0.5) { face = 1; t = vec2(1.0 - t.x, t.y); }
-        else if (n.x > 0.5)  { face = 2; }
-        else if (n.x < -0.5) { face = 3; }
-        else if (n.y > 0.5)  { face = 4; t = vec2(t.x, 1.0 - t.y); }
-        else                 { face = 5; t = vec2(t.x, 1.0 - t.y); }
-        vec2 uvFinal = (vGrid + t) / uGridSize;
+        if (n.z > 0.5)       face = 0;
+        else if (n.z < -0.5) face = 1;
+        else if (n.x > 0.5)  face = 2;
+        else if (n.x < -0.5) face = 3;
+        else if (n.y > 0.5)  face = 4;
+        else                 face = 5;
+        vec2 uvFinal = (vGrid + vUv) / uGridSize;
         vec4 col;
         if (face == 0) col = texture2D(t0, uvFinal);
         else if (face == 1) col = texture2D(t1, uvFinal);
@@ -274,7 +431,6 @@ function buildShaderMaterial() {
         else if (face == 3) col = texture2D(t3, uvFinal);
         else if (face == 4) col = texture2D(t4, uvFinal);
         else col = texture2D(t5, uvFinal);
-        // 簡易ライティング＋タイルの縁を軽く落とす
         float light = 0.72 + 0.38 * max(dot(vWorldN, uLightDir), 0.0);
         float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
         float edge = 0.78 + 0.22 * smoothstep(0.0, 0.07, e);
@@ -287,141 +443,166 @@ function buildShaderMaterial() {
 function rebuildWall() {
   if (wallMesh) {
     scene.remove(wallMesh);
-    wallMesh.geometry.dispose();
+    wallGeo.dispose();
     wallMat.dispose();
   }
   COLS = Math.max(8, Math.round(Math.sqrt(TARGET_CUBES * wallAspect)));
   ROWS = Math.max(8, Math.round(COLS / wallAspect));
   NCUBES = COLS * ROWS;
 
-  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  wallGeo = new THREE.InstancedBufferGeometry().copy(box);
+  wallGeo.instanceCount = NCUBES;
+
   const grid = new Float32Array(NCUBES * 2);
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
     const i = r * COLS + c;
     grid[i * 2] = c;
-    grid[i * 2 + 1] = ROWS - 1 - r; // r=0 は最上段。テクスチャは v=0 が下端なので反転して割り当てる
+    grid[i * 2 + 1] = ROWS - 1 - r; // r=0 は最上段。テクスチャは v=0 が下端
   }
-  const igeo = new THREE.InstancedBufferGeometry().copy(geo);
-  igeo.instanceCount = NCUBES;
-  igeo.setAttribute('aGrid', new THREE.InstancedBufferAttribute(grid, 2));
+  jsStart = new Float32Array(NCUBES);
+  jsDur = new Float32Array(NCUBES);
+  jsKind = new Float32Array(NCUBES);
+  jsQ0 = new Float32Array(NCUBES * 4);
+  jsQ1 = new Float32Array(NCUBES * 4);
+  const scatter = new Float32Array(NCUBES * 3);
+  const fq = FACE_QUATS[current];
+  for (let i = 0; i < NCUBES; i++) {
+    jsQ0.set(fq, i * 4);
+    jsQ1.set(fq, i * 4);
+  }
+  const mk = (arr, size) => {
+    const a = new THREE.InstancedBufferAttribute(arr, size);
+    a.setUsage(THREE.DynamicDrawUsage);
+    return a;
+  };
+  wallGeo.setAttribute('aGrid', new THREE.InstancedBufferAttribute(grid, 2));
+  wallGeo.setAttribute('aStart', aStartAttr = mk(jsStart.slice(), 1));
+  wallGeo.setAttribute('aDur', aDurAttr = mk(jsDur.slice(), 1));
+  wallGeo.setAttribute('aKind', aKindAttr = mk(jsKind.slice(), 1));
+  wallGeo.setAttribute('aScatter', aScatterAttr = mk(scatter, 3));
+  wallGeo.setAttribute('aQ0', aQ0Attr = mk(jsQ0.slice(), 4));
+  wallGeo.setAttribute('aQ1', aQ1Attr = mk(jsQ1.slice(), 4));
 
   wallMat = buildShaderMaterial();
   wallMat.uniforms.uGridSize.value.set(COLS, ROWS);
   for (let i = 0; i < 6; i++) wallMat.uniforms['t' + i].value = slots[i].tex;
 
-  wallMesh = new THREE.InstancedMesh(igeo, wallMat, NCUBES);
-  wallMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  wallMesh = new THREE.Mesh(wallGeo, wallMat);
+  wallMesh.frustumCulled = false;
   scene.add(wallMesh);
-
-  cubes = new Array(NCUBES);
-  const q0 = FACE_QUATS[current].clone();
-  for (let i = 0; i < NCUBES; i++) {
-    cubes[i] = {
-      quat: q0.clone(), startQuat: q0.clone(), targetQuat: q0.clone(),
-      t0: -1, dur: 0.5, kind: 'flip', spinAngle: 0, pop: 0,
-    };
-  }
-  syncAllMatrices(true);
   fitCamera();
 }
 
-const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
-const _p = new THREE.Vector3();
-const _s = new THREE.Vector3(0.96, 0.96, 0.96);
-
-function cubeXY(i) {
-  const c = i % COLS, r = (i / COLS) | 0;
-  return [c - (COLS - 1) / 2, (ROWS - 1) / 2 - r];
-}
-
-function composeCube(i, quat, pop) {
-  const [x, y] = cubeXY(i);
-  _p.set(x, y, pop);
-  _m.compose(_p, quat, _s);
-  wallMesh.setMatrixAt(i, _m);
-}
-
-function syncAllMatrices() {
-  for (let i = 0; i < NCUBES; i++) composeCube(i, cubes[i].quat, 0);
-  wallMesh.instanceMatrix.needsUpdate = true;
-}
-
-// ================= さざなみ切り替え =================
-const WAVE_SPEED = 42;   // cubes/sec
+// ================= 切り替えアニメーション =================
+const WAVE_SPEED = 42;
 const FLIP_DUR = 0.55;
-let animating = 0;
+const PATTERNS = ['ripple', 'sweep', 'spiral', 'random', 'assemble'];
+let pattern = 'auto';
 
-function easeBack(u) {
-  const s = 1.35;
-  const v = u - 1;
-  return 1 + v * v * ((s + 1) * v + s);
+// 現在姿勢（アニメ途中も再現）を out[o..o+3] に書く
+function currentQuatOf(i, now, out, o) {
+  const dur = jsDur[i];
+  if (dur <= 0 || now >= jsStart[i] + dur) {
+    out[o] = jsQ1[i * 4]; out[o + 1] = jsQ1[i * 4 + 1];
+    out[o + 2] = jsQ1[i * 4 + 2]; out[o + 3] = jsQ1[i * 4 + 3];
+    return;
+  }
+  const u = Math.max(0, (now - jsStart[i]) / dur);
+  const kind = jsKind[i];
+  if (kind === 1) qmulY(out, o, jsQ0, i * 4, Math.PI * 2 * smooth(u));
+  else nlerp(out, o, jsQ0, i * 4, jsQ1, i * 4, kind === 2 ? smooth(u) : easeBack(u));
 }
 
-function rippleTo(target, ox, oy, kind = 'flip') {
+// mode: 'spin' | パターン名 | undefined（選択中。auto はランダム解決）
+function triggerWave(target, ox, oy, mode, rng = Math.random) {
+  const tStart = performance.now();
+  const pat = mode ?? (pattern === 'auto' ? PATTERNS[(rng() * PATTERNS.length) | 0] : pattern);
   const now = clock.elapsedTime;
   const tq = FACE_QUATS[target];
-  for (let i = 0; i < NCUBES; i++) {
-    const [x, y] = cubeXY(i);
-    const d = Math.hypot(x - ox, y - oy);
-    const cb = cubes[i];
-    // 進行中のアニメは現在姿勢から継続
-    cb.startQuat.copy(cb.quat);
-    cb.targetQuat.copy(tq);
-    cb.t0 = now + d / WAVE_SPEED;
-    cb.dur = FLIP_DUR;
-    cb.kind = kind;
-    cb.done = false;
+  const maxDim = Math.max(COLS, ROWS);
+  const sw = [[1, 0], [-1, 0], [0, -1], [0, 1], [0.7071, -0.7071], [-0.7071, 0.7071]][(rng() * 6) | 0];
+  let minP = Infinity, maxP = -Infinity;
+  if (pat === 'sweep') {
+    for (const [px, py] of [[-COLS / 2, -ROWS / 2], [COLS / 2, -ROWS / 2], [-COLS / 2, ROWS / 2], [COLS / 2, ROWS / 2]]) {
+      const p = px * sw[0] + py * sw[1];
+      minP = Math.min(minP, p); maxP = Math.max(maxP, p);
+    }
   }
-  if (kind === 'flip') { current = target; refreshActiveUI(); }
+  const scat = aScatterAttr.array;
+  const q0a = aQ0Attr.array, q1a = aQ1Attr.array;
+  const sta = aStartAttr.array, dua = aDurAttr.array, kia = aKindAttr.array;
+  const halfC = (COLS - 1) / 2, halfR = (ROWS - 1) / 2;
+  const spin = pat === 'spin';
+
+  for (let i = 0; i < NCUBES; i++) {
+    const c = i % COLS, r = (i / COLS) | 0;
+    const x = c - halfC, y = halfR - r;
+    let delay = 0, dur = FLIP_DUR, kind = spin ? 1 : 0;
+    if (pat === 'ripple' || spin) {
+      delay = Math.hypot(x - ox, y - oy) / WAVE_SPEED;
+    } else if (pat === 'sweep') {
+      delay = ((x * sw[0] + y * sw[1]) - minP) / (maxP - minP) * 1.35;
+    } else if (pat === 'spiral') {
+      const a = (Math.atan2(y - oy * 0.3, x - ox * 0.3) + Math.PI) / (Math.PI * 2);
+      delay = a * 0.85 + Math.hypot(x, y) / (maxDim * 0.7) * 1.0;
+    } else if (pat === 'random') {
+      delay = rng() * 1.2;
+    } else if (pat === 'assemble') {
+      delay = rng() * 0.35 + Math.hypot(x - ox, y - oy) / maxDim * 0.3;
+      dur = 1.35;
+      kind = 2;
+      const th = rng() * Math.PI * 2;
+      const rr = maxDim * (0.15 + rng() * 0.4);
+      scat[i * 3] = Math.cos(th) * rr;
+      scat[i * 3 + 1] = Math.sin(th) * rr * 0.7;
+      scat[i * 3 + 2] = 4 + rng() * maxDim * 0.45;
+    }
+    // 現在姿勢を aQ0 に取り込み（進行中アニメから滑らかに継続）
+    currentQuatOf(i, now, q0a, i * 4);
+    jsQ0[i * 4] = q0a[i * 4]; jsQ0[i * 4 + 1] = q0a[i * 4 + 1];
+    jsQ0[i * 4 + 2] = q0a[i * 4 + 2]; jsQ0[i * 4 + 3] = q0a[i * 4 + 3];
+    if (spin) { // スピンは元の姿勢に戻る
+      q1a[i * 4] = q0a[i * 4]; q1a[i * 4 + 1] = q0a[i * 4 + 1];
+      q1a[i * 4 + 2] = q0a[i * 4 + 2]; q1a[i * 4 + 3] = q0a[i * 4 + 3];
+    } else {
+      q1a[i * 4] = tq[0]; q1a[i * 4 + 1] = tq[1]; q1a[i * 4 + 2] = tq[2]; q1a[i * 4 + 3] = tq[3];
+    }
+    jsQ1[i * 4] = q1a[i * 4]; jsQ1[i * 4 + 1] = q1a[i * 4 + 1];
+    jsQ1[i * 4 + 2] = q1a[i * 4 + 2]; jsQ1[i * 4 + 3] = q1a[i * 4 + 3];
+    sta[i] = now + delay;
+    dua[i] = dur;
+    kia[i] = kind;
+    jsStart[i] = sta[i]; jsDur[i] = dur; jsKind[i] = kind;
+  }
+  for (const a of [aStartAttr, aDurAttr, aKindAttr, aScatterAttr, aQ0Attr, aQ1Attr]) a.needsUpdate = true;
+  if (!spin) { current = target; refreshActiveUI(); }
+  autoT = 0;
+  triggerMs = performance.now() - tStart;
   sfx('ripple');
 }
 
-function stepCubes() {
+function animatingCount() {
   const now = clock.elapsedTime;
-  const t0 = performance.now();
-  let any = false;
-  let count = 0;
-  for (let i = 0; i < NCUBES; i++) {
-    const cb = cubes[i];
-    if (cb.done || cb.t0 < 0) continue;
-    const u = (now - cb.t0) / cb.dur;
-    if (u < 0) { any = true; continue; }
-    count++;
-    if (u >= 1) {
-      if (cb.kind === 'spin') cb.quat.copy(cb.startQuat);
-      else cb.quat.copy(cb.targetQuat);
-      composeCube(i, cb.quat, 0);
-      cb.done = true;
-      any = true;
-      continue;
-    }
-    if (cb.kind === 'spin') {
-      _q.setFromAxisAngle(AXIS_Y, Math.PI * 2 * smooth(u)); // u=1 でちょうど一回転して元の姿勢へ
-      cb.quat.copy(cb.startQuat).multiply(_q);
-    } else {
-      const e = easeBack(u);
-      cb.quat.copy(cb.startQuat).slerp(cb.targetQuat, Math.min(1, Math.max(0, e)));
-    }
-    composeCube(i, cb.quat, Math.sin(Math.PI * Math.min(1, u)) * 1.1);
-    any = true;
-  }
-  animating = count;
-  if (any) wallMesh.instanceMatrix.needsUpdate = true;
-  matMs = matMs * 0.9 + (performance.now() - t0) * 0.1;
+  let n = 0;
+  for (let i = 0; i < NCUBES; i++) if (jsDur[i] > 0 && now < jsStart[i] + jsDur[i]) n++;
+  return n;
 }
-const AXIS_Y = new THREE.Vector3(0, 1, 0);
-function smooth(u) { return u * u * (3 - 2 * u); }
 
 // ================= カメラ =================
-function fitCamera() {
-  const vfov = THREE.MathUtils.degToRad(camera.fov);
+const BASE_FOV = 46;
+let camMode = 'front';
+let shot = null, shotT = 0, lastShotIdx = -1, autoT = 0, benchT = 0;
+
+const lerp = (a, b, t) => a + (b - a) * t;
+function easeIO(u) { return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2; }
+function frontDist() {
+  const vfov = THREE.MathUtils.degToRad(BASE_FOV);
   const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
-  const dz = Math.max(
-    (ROWS / 2 + 1) / Math.tan(vfov / 2),
-    (COLS / 2 + 1) / Math.tan(hfov / 2)
-  ) * 1.06;
-  camera.position.set(0, 0, dz);
+  return Math.max((ROWS / 2 + 1) / Math.tan(vfov / 2), (COLS / 2 + 1) / Math.tan(hfov / 2)) * 1.06;
+}
+function fitCamera() {
+  camera.position.set(0, 0, frontDist());
   camera.lookAt(0, 0, 0);
 }
 let parallax = { x: 0, y: 0 };
@@ -429,6 +610,37 @@ addEventListener('pointermove', e => {
   parallax.x = (e.clientX / innerWidth - 0.5) * 2;
   parallax.y = (e.clientY / innerHeight - 0.5) * 2;
 });
+
+function makeShots() {
+  const W = COLS, H = ROWS, D = frontDist();
+  return [
+    { dur: 7, fov: 40, pos: u => [lerp(-W * 0.35, W * 0.35, u), -H * 0.28, 5.5], look: u => [lerp(-W * 0.1, W * 0.55, u), -H * 0.05, 0] },
+    { dur: 8, fov: 50, pos: u => { const a = lerp(-0.85, -0.2, u); return [Math.sin(a) * W * 0.8, lerp(-H * 0.15, H * 0.28, u), Math.cos(a) * W * 0.8]; }, look: () => [0, 0, 0] },
+    { dur: 7, fov: 45, pos: u => [W * 0.12, lerp(H * 0.6, -H * 0.05, u), lerp(9, 14, u)], look: u => [0, lerp(H * 0.15, 0, u), 0] },
+    { dur: 7, fov: 38, pos: u => [W * 0.55, lerp(H * 0.3, -H * 0.3, u), 3.2], look: u => [W * 0.1, lerp(H * 0.12, -H * 0.12, u), 0.8] },
+    { dur: 8, fov: BASE_FOV, pos: u => { const a = lerp(0.22, -0.22, u); return [Math.sin(a) * D, H * 0.06, Math.cos(a) * D]; }, look: () => [0, 0, 0] },
+    { dur: 6, fov: 35, pos: u => [lerp(-W * 0.12, W * 0.04, u), lerp(-H * 0.12, H * 0.04, u), lerp(8, 3.4, u)], look: u => [lerp(-W * 0.12, W * 0.04, u) + 1.5, lerp(-H * 0.12, H * 0.04, u) + 1, 0] },
+  ];
+}
+function nextShot() {
+  const shots = makeShots();
+  let idx;
+  do { idx = (Math.random() * shots.length) | 0; } while (idx === lastShotIdx && shots.length > 1);
+  lastShotIdx = idx;
+  shot = shots[idx];
+  shotT = 0;
+}
+function toggleCamera() {
+  camMode = camMode === 'front' ? 'cinema' : 'front';
+  document.getElementById('cam-btn').classList.toggle('on', camMode === 'cinema');
+  if (camMode === 'cinema') { nextShot(); autoT = 0; }
+  else {
+    camera.fov = BASE_FOV;
+    camera.updateProjectionMatrix();
+    fitCamera();
+  }
+}
+addEventListener('keydown', e => { if (e.code === 'KeyC') toggleCamera(); });
 
 // ================= 入力 =================
 const raycaster = new THREE.Raycaster();
@@ -441,12 +653,8 @@ function wallClickAt(clientX, clientY) {
   const ox = THREE.MathUtils.clamp(hit.x, -COLS / 2, COLS / 2);
   const oy = THREE.MathUtils.clamp(hit.y, -ROWS / 2, ROWS / 2);
   const set = activeSet();
-  if (set.length === 1) {
-    rippleTo(current, ox, oy, 'spin');
-  } else {
-    const next = set[(set.indexOf(current) + 1) % set.length];
-    rippleTo(next, ox, oy, 'flip');
-  }
+  if (set.length === 1) triggerWave(current, ox, oy, 'spin');
+  else triggerWave(set[(set.indexOf(current) + 1) % set.length], ox, oy);
 }
 renderer.domElement.addEventListener('pointerdown', e => wallClickAt(e.clientX, e.clientY));
 
@@ -457,12 +665,11 @@ addEventListener('keydown', e => {
 function trySwitchTo(idx) {
   if (!slots[idx].tex) return;
   if (slots[idx].user || activeSet().length === 6) {
-    if (idx === current) rippleTo(idx, 0, 0, 'spin');
-    else rippleTo(idx, 0, 0, 'flip');
+    if (idx === current) triggerWave(idx, 0, 0, 'spin');
+    else triggerWave(idx, 0, 0);
   }
 }
 
-// スロットUI
 let pickTarget = 0;
 const fileInput = document.getElementById('file-input');
 document.querySelectorAll('.slot').forEach(el => {
@@ -485,9 +692,25 @@ fileInput.addEventListener('change', () => {
   if (fileInput.files[0]) loadFile(fileInput.files[0], pickTarget);
   fileInput.value = '';
 });
-document.getElementById('spin-btn').addEventListener('click', () => rippleTo(current, 0, 0, 'spin'));
+document.getElementById('spin-btn').addEventListener('click', () => triggerWave(current, 0, 0, 'spin'));
 
-// ページ全体へのドロップ: 空きスロット（無ければ次のスロット）へ
+document.querySelectorAll('#patterns button[data-p]').forEach(el => {
+  el.addEventListener('click', () => {
+    pattern = el.dataset.p;
+    document.querySelectorAll('#patterns button[data-p]').forEach(b => b.classList.toggle('on', b === el));
+  });
+});
+document.getElementById('cam-btn').addEventListener('click', toggleCamera);
+
+document.querySelectorAll('#quality button[data-q]').forEach(el => {
+  el.addEventListener('click', () => {
+    TARGET_CUBES = Number(el.dataset.q);
+    document.querySelectorAll('#quality button[data-q]').forEach(b => b.classList.toggle('on', b === el));
+    rebuildWall();
+  });
+});
+document.getElementById('bench-btn').addEventListener('click', () => runBenchmark());
+
 addEventListener('dragover', e => {
   e.preventDefault();
   document.getElementById('drop-hint').classList.add('show');
@@ -551,6 +774,98 @@ function sfx(kind) {
   } catch (_) { /* 音は演出のみ */ }
 }
 
+// ================= FPS 計測 =================
+const frameDeltas = [];
+let lastFrameT = performance.now();
+let fpsEMA = 0;
+let collecting = false;
+let collected = [];
+
+function tickStats() {
+  const now = performance.now();
+  const d = now - lastFrameT;
+  lastFrameT = now;
+  if (d > 0 && d < 1000) {
+    frameDeltas.push(d);
+    if (frameDeltas.length > 90) frameDeltas.shift();
+    if (collecting) collected.push(d);
+  }
+  const avg = frameDeltas.reduce((a, b) => a + b, 0) / (frameDeltas.length || 1);
+  fpsEMA = 1000 / avg;
+}
+setInterval(() => {
+  document.getElementById('fps').innerHTML =
+    `${fpsEMA.toFixed(0)} <span class="sub">FPS / ${NCUBES.toLocaleString()} cubes</span>`;
+}, 500);
+
+// ================= ベンチマーク =================
+function mulberry32(seed) {
+  return () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let benchRunning = false;
+
+async function runBenchmark(presets = [5000, 20000, 50000, 100000, 200000], secsPer = 6) {
+  if (benchRunning) return null;
+  benchRunning = true;
+  const prevCount = TARGET_CUBES, prevMode = camMode;
+  camMode = 'bench';
+  document.getElementById('bench-btn').classList.add('on');
+  document.getElementById('bench-progress').classList.add('show');
+  const results = [];
+  try {
+    for (let pi = 0; pi < presets.length; pi++) {
+      const n = presets[pi];
+      document.getElementById('bench-progress').textContent =
+        `BENCHMARK ${pi + 1}/${presets.length} — ${n.toLocaleString()} cubes`;
+      TARGET_CUBES = n;
+      rebuildWall();
+      benchT = 0;
+      await sleep(700); // ビルド＋ウォームアップ
+      const rng = mulberry32(12345);
+      collected = [];
+      collecting = true;
+      const set = activeSet();
+      triggerWave(set[(set.indexOf(current) + 1) % set.length], 0, 0, 'assemble', rng);
+      await sleep(secsPer * 500);
+      triggerWave(set[(set.indexOf(current) + 1) % set.length], 0, 0, 'ripple', rng);
+      await sleep(secsPer * 500);
+      collecting = false;
+      const ds = collected.slice(3); // 出だしを除外
+      const avg = ds.reduce((a, b) => a + b, 0) / (ds.length || 1);
+      const sorted = [...ds].sort((a, b) => a - b);
+      const p99 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.99))] || avg;
+      results.push({ n, fps: 1000 / avg, low: 1000 / p99, trigMs: triggerMs });
+    }
+  } finally {
+    TARGET_CUBES = prevCount;
+    rebuildWall();
+    camMode = prevMode === 'bench' ? 'front' : prevMode;
+    if (camMode === 'front') { camera.fov = BASE_FOV; camera.updateProjectionMatrix(); fitCamera(); }
+    document.getElementById('bench-btn').classList.remove('on');
+    document.getElementById('bench-progress').classList.remove('show');
+    benchRunning = false;
+  }
+  // 結果表示
+  const score = Math.round(results.reduce((a, r) => a + r.n * r.fps, 0) / 100000);
+  const bestKey = 'flip-wall-bench-best';
+  const best = Math.max(score, Number(localStorage.getItem(bestKey) || 0));
+  localStorage.setItem(bestKey, best);
+  document.getElementById('bench-table').innerHTML =
+    '<tr><th>粒子数</th><th>平均FPS</th><th>1% Low</th><th>切替コスト</th></tr>' +
+    results.map(r =>
+      `<tr><td>${r.n.toLocaleString()}</td><td class="fps">${r.fps.toFixed(1)}</td>` +
+      `<td>${r.low.toFixed(1)}</td><td>${r.trigMs.toFixed(1)}ms</td></tr>`).join('');
+  document.getElementById('bench-score').textContent = `FLIP SCORE: ${score}   BEST: ${best}`;
+  document.getElementById('bench-overlay').classList.remove('hidden');
+  return { results, score };
+}
+
 // ================= 初期化・ループ =================
 for (let i = 0; i < 6; i++) setSlotImage(i, makeDefaultArt(i), false);
 rebuildWall();
@@ -559,14 +874,39 @@ refreshActiveUI();
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
-  clock.getDelta();
-  stepCubes();
+  const dt = Math.min(clock.getDelta(), 0.05);
+  wallMat.uniforms.uNow.value = clock.elapsedTime;
+  tickStats();
 
-  // マウスパララックス
-  const bx = parallax.x * COLS * 0.04, by = -parallax.y * ROWS * 0.03;
-  camera.position.x += (bx - camera.position.x) * 0.06;
-  camera.position.y += (by - camera.position.y) * 0.06;
-  camera.lookAt(0, 0, 0);
+  if (camMode === 'cinema') {
+    shotT += dt;
+    if (!shot || shotT > shot.dur) nextShot();
+    const u = easeIO(Math.min(1, shotT / shot.dur));
+    const p = shot.pos(u), l = shot.look(u);
+    camera.position.set(p[0], p[1], p[2]);
+    camera.lookAt(l[0], l[1], l[2]);
+    if (camera.fov !== shot.fov) { camera.fov = shot.fov; camera.updateProjectionMatrix(); }
+    autoT += dt;
+    if (autoT > 9) {
+      autoT = 0;
+      const set = activeSet();
+      if (set.length === 1) triggerWave(current, 0, 0, 'spin');
+      else triggerWave(set[(set.indexOf(current) + 1) % set.length], 0, 0);
+    }
+  } else if (camMode === 'bench') {
+    // ベンチ用の決定的なオービットカメラ
+    benchT += dt;
+    const D = frontDist();
+    const a = Math.sin(benchT * 0.45) * 0.6;
+    camera.position.set(Math.sin(a) * D * 0.8, Math.sin(benchT * 0.6) * ROWS * 0.18, Math.cos(a) * D * 0.8);
+    camera.lookAt(0, 0, 0);
+    if (camera.fov !== BASE_FOV) { camera.fov = BASE_FOV; camera.updateProjectionMatrix(); }
+  } else {
+    const bx = parallax.x * COLS * 0.04, by = -parallax.y * ROWS * 0.03;
+    camera.position.x += (bx - camera.position.x) * 0.06;
+    camera.position.y += (by - camera.position.y) * 0.06;
+    camera.lookAt(0, 0, 0);
+  }
 
   renderer.render(scene, camera);
 }
@@ -576,15 +916,16 @@ addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  fitCamera();
+  if (camMode === 'front') fitCamera();
 });
 
 // ================= テスト用フック =================
 window.__wall = {
   grid: () => ({ cols: COLS, rows: ROWS, n: NCUBES }),
   current: () => current,
-  animating: () => animating,
-  matMs: () => matMs,
+  animating: animatingCount,
+  fps: () => fpsEMA,
+  triggerMs: () => triggerMs,
   aspect: () => wallAspect,
   activeSet,
   switchTo: trySwitchTo,
@@ -595,7 +936,16 @@ window.__wall = {
     img.src = dataURL;
     return true;
   },
-  spin() { rippleTo(current, 0, 0, 'spin'); },
+  spin() { triggerWave(current, 0, 0, 'spin'); },
+  setPattern(p) { pattern = p; },
+  getPattern: () => pattern,
+  trigger(target, p) { triggerWave(target, 0, 0, p); },
+  camMode: () => camMode,
+  toggleCamera,
+  camPos: () => camera.position.toArray(),
+  forceNextShot: nextShot,
+  setCount(n) { TARGET_CUBES = n; rebuildWall(); },
+  benchmark: runBenchmark,
 };
 </script>
 </body>
