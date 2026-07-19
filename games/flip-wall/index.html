@@ -616,7 +616,6 @@ function triggerWave(target, ox, oy, mode, rng = Math.random) {
   if (!spin) { current = target; refreshActiveUI(); }
   autoT = 0;
   triggerMs = performance.now() - tStart;
-  sfx('ripple');
 }
 
 function animatingCount() {
@@ -783,39 +782,8 @@ function loadFile(file, idx) {
     URL.revokeObjectURL(url);
     setSlotImage(idx, img, true);
     trySwitchTo(idx);
-    sfx('load');
   };
   img.src = url;
-}
-
-// ================= サウンド =================
-let audioCtx = null;
-function sfx(kind) {
-  try {
-    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
-    const t = audioCtx.currentTime;
-    if (kind === 'ripple') {
-      const o = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(320, t);
-      o.frequency.exponentialRampToValueAtTime(720, t + 0.5);
-      g.gain.setValueAtTime(0.08, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-      o.connect(g).connect(audioCtx.destination);
-      o.start(t); o.stop(t + 0.65);
-    } else if (kind === 'load') {
-      for (const [f, d] of [[660, 0], [880, 0.08]]) {
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.frequency.value = f;
-        g.gain.setValueAtTime(0.09, t + d);
-        g.gain.exponentialRampToValueAtTime(0.001, t + d + 0.12);
-        o.connect(g).connect(audioCtx.destination);
-        o.start(t + d); o.stop(t + d + 0.15);
-      }
-    }
-  } catch (_) { /* 音は演出のみ */ }
 }
 
 // ================= FPS 計測 =================
