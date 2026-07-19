@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Flip Wall — Fable 3D Games</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -17,9 +17,19 @@
   #title .name { font-size: 18px; letter-spacing: 4px; font-weight: bold; }
   #title .hint { font-size: 11px; letter-spacing: 1px; opacity: 0.65; margin-top: 4px; line-height: 1.7; }
   #back {
-    position: fixed; top: 16px; right: 18px; z-index: 10;
+    position: fixed; top: 16px; right: 64px; z-index: 10;
     font-size: 11px; letter-spacing: 1px; text-align: right;
   }
+  #ui-toggle {
+    position: fixed; top: 12px; right: 12px; z-index: 25;
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    border: 1px solid rgba(120, 190, 255, 0.4); color: #9fdcff;
+    background: rgba(10, 18, 32, 0.6); font-size: 17px; font-family: inherit;
+    opacity: 0.75;
+  }
+  #ui-toggle:hover { opacity: 1; }
+  body.ui-hidden #title, body.ui-hidden #back, body.ui-hidden #ui-bottom { display: none; }
+  body.ui-hidden #ui-toggle { opacity: 0.35; }
   #back a { color: #9fdcff; opacity: 0.7; }
   #fps {
     margin-top: 8px; color: #8fffce; font-size: 14px; letter-spacing: 2px;
@@ -27,11 +37,20 @@
   }
   #fps .sub { font-size: 10px; opacity: 0.6; color: #9fdcff; }
 
-  #slots {
-    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 10px; align-items: flex-end; z-index: 10;
+  #ui-bottom {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
+    pointer-events: none; /* 隙間は壁クリックを通す。子要素側で受ける */
   }
+  #slots {
+    display: flex; gap: 10px; align-items: center;
+    max-width: 100%; overflow-x: auto; padding: 4px 2px;
+    pointer-events: auto; scrollbar-width: none;
+  }
+  #slots::-webkit-scrollbar { display: none; }
   .slot {
+    flex: 0 0 auto;
     width: 64px; height: 84px; border-radius: 8px; cursor: pointer;
     border: 2px solid rgba(120, 190, 255, 0.35);
     background: rgba(10, 18, 32, 0.75) center/cover no-repeat;
@@ -50,6 +69,7 @@
   }
   .slot.user .empty-mark { display: none; }
   #spin-btn {
+    flex: 0 0 auto;
     width: 52px; height: 52px; border-radius: 50%; cursor: pointer; align-self: center;
     border: 2px solid rgba(120, 190, 255, 0.4); color: #9fdcff;
     background: rgba(10, 18, 32, 0.75); font-size: 20px; font-family: inherit;
@@ -65,12 +85,13 @@
   input[type=file] { display: none; }
 
   .chipbar {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 6px; z-index: 10; flex-wrap: wrap; justify-content: center;
+    display: flex; gap: 6px; flex-wrap: nowrap;
+    max-width: 100%; overflow-x: auto; padding: 2px;
+    pointer-events: auto; scrollbar-width: none;
   }
-  #patterns { bottom: 108px; }
-  #quality { bottom: 146px; }
+  .chipbar::-webkit-scrollbar { display: none; }
   .chipbar button, .chipbar .lbl {
+    flex: 0 0 auto; white-space: nowrap;
     font-family: inherit; font-size: 11px; letter-spacing: 1px;
     padding: 6px 12px; border-radius: 999px;
   }
@@ -122,45 +143,61 @@
     text-shadow: 0 0 10px rgba(255, 190, 80, 0.8); display: none;
   }
   #bench-progress.show { display: block; }
+
+  /* スマホ: 小型化して1画面に収める */
+  @media (max-width: 640px) {
+    #title .name { font-size: 14px; }
+    #title .hint { display: none; }
+    .slot { width: 46px; height: 61px; }
+    .slot .num { font-size: 9px; top: 2px; left: 4px; }
+    #spin-btn { width: 38px; height: 38px; font-size: 15px; }
+    .chipbar { gap: 4px; }
+    .chipbar button, .chipbar .lbl { font-size: 10px; padding: 5px 9px; letter-spacing: 0.5px; }
+    #ui-bottom { gap: 6px; }
+    #fps { font-size: 12px; }
+  }
 </style>
 </head>
 <body>
 <div id="title">
   <div class="name">FLIP WALL</div>
   <div class="hint">画像をドロップ / 下のスロットをクリックでアップロード（ブラウザ内処理・送信なし）<br>
-  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波　C: シネマカメラ</div>
+  壁クリック: その場から次の絵へ　数字キー1-6: 絵を選択　🌀: スピン波　C: シネマカメラ　H: UI表示切替</div>
 </div>
 <div id="back">
   <a href="../../index.html">&larr; ゲーム一覧へ戻る</a>
   <div id="fps">-- <span class="sub">FPS</span></div>
 </div>
+<button id="ui-toggle" title="UI表示切替 (H)">👁</button>
 
-<div class="chipbar" id="quality">
-  <span class="lbl">粒子数</span>
-  <button data-q="5000" class="on">5K</button>
-  <button data-q="20000">20K</button>
-  <button data-q="50000">50K</button>
-  <button data-q="100000">100K</button>
-  <button data-q="200000">200K</button>
-  <button id="bench-btn">🏁 ベンチマーク</button>
-</div>
-<div class="chipbar" id="patterns">
-  <button data-p="auto" class="on">おまかせ</button>
-  <button data-p="ripple">波紋</button>
-  <button data-p="sweep">スイープ</button>
-  <button data-p="spiral">渦</button>
-  <button data-p="random">ランダム</button>
-  <button data-p="assemble">集合</button>
-  <button id="cam-btn">📷 シネマ</button>
-</div>
-<div id="slots">
-  <div class="slot" data-slot="0"><span class="num">1</span><span class="empty-mark">＋</span></div>
-  <div class="slot" data-slot="1"><span class="num">2</span><span class="empty-mark">＋</span></div>
-  <div class="slot" data-slot="2"><span class="num">3</span><span class="empty-mark">＋</span></div>
-  <button id="spin-btn" title="スピン波">🌀</button>
-  <div class="slot" data-slot="3"><span class="num">4</span><span class="empty-mark">＋</span></div>
-  <div class="slot" data-slot="4"><span class="num">5</span><span class="empty-mark">＋</span></div>
-  <div class="slot" data-slot="5"><span class="num">6</span><span class="empty-mark">＋</span></div>
+<div id="ui-bottom">
+  <div class="chipbar" id="quality">
+    <span class="lbl">粒子数</span>
+    <button data-q="5000" class="on">5K</button>
+    <button data-q="20000">20K</button>
+    <button data-q="50000">50K</button>
+    <button data-q="100000">100K</button>
+    <button data-q="200000">200K</button>
+    <button id="bench-btn">🏁 ベンチマーク</button>
+  </div>
+  <div class="chipbar" id="patterns">
+    <button data-p="auto" class="on">おまかせ</button>
+    <button data-p="ripple">波紋</button>
+    <button data-p="sweep">スイープ</button>
+    <button data-p="spiral">渦</button>
+    <button data-p="random">ランダム</button>
+    <button data-p="assemble">集合</button>
+    <button id="cam-btn">📷 シネマ</button>
+  </div>
+  <div id="slots">
+    <div class="slot" data-slot="0"><span class="num">1</span><span class="empty-mark">＋</span></div>
+    <div class="slot" data-slot="1"><span class="num">2</span><span class="empty-mark">＋</span></div>
+    <div class="slot" data-slot="2"><span class="num">3</span><span class="empty-mark">＋</span></div>
+    <button id="spin-btn" title="スピン波">🌀</button>
+    <div class="slot" data-slot="3"><span class="num">4</span><span class="empty-mark">＋</span></div>
+    <div class="slot" data-slot="4"><span class="num">5</span><span class="empty-mark">＋</span></div>
+    <div class="slot" data-slot="5"><span class="num">6</span><span class="empty-mark">＋</span></div>
+  </div>
 </div>
 <div id="drop-hint">画像をドロップしてスロットに追加</div>
 <div id="bench-progress">BENCHMARK RUNNING…</div>
@@ -702,6 +739,13 @@ document.querySelectorAll('#patterns button[data-p]').forEach(el => {
 });
 document.getElementById('cam-btn').addEventListener('click', toggleCamera);
 
+// UI表示切替（鑑賞・スクリーンショット用）
+function toggleUI() {
+  document.body.classList.toggle('ui-hidden');
+}
+document.getElementById('ui-toggle').addEventListener('click', toggleUI);
+addEventListener('keydown', e => { if (e.code === 'KeyH') toggleUI(); });
+
 document.querySelectorAll('#quality button[data-q]').forEach(el => {
   el.addEventListener('click', () => {
     TARGET_CUBES = Number(el.dataset.q);
@@ -946,6 +990,8 @@ window.__wall = {
   forceNextShot: nextShot,
   setCount(n) { TARGET_CUBES = n; rebuildWall(); },
   benchmark: runBenchmark,
+  toggleUI,
+  uiHidden: () => document.body.classList.contains('ui-hidden'),
 };
 </script>
 </body>
