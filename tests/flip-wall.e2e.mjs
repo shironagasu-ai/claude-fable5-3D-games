@@ -131,35 +131,40 @@ for (let w = 0; w < 60; w++) {
   if ((await page.evaluate(() => window.__wall.animating())) === 0) break;
 }
 
-// ---- シネマカメラ ----
+// ---- デモモード（旧シネマ） ----
 check('cam starts front', (await page.evaluate(() => window.__wall.camMode())) === 'front');
 await page.evaluate(() => window.__wall.toggleCamera());
-check('cam toggles to cinema', (await page.evaluate(() => window.__wall.camMode())) === 'cinema');
+check('cam toggles to demo', (await page.evaluate(() => window.__wall.camMode())) === 'demo');
 const cp1 = await page.evaluate(() => window.__wall.camPos());
 await page.waitForTimeout(3500); // 低fps環境＋イーズインを考慮して長めに待つ
 const cp2 = await page.evaluate(() => window.__wall.camPos());
 const moved = Math.hypot(cp1[0] - cp2[0], cp1[1] - cp2[1], cp1[2] - cp2[2]);
 console.log('camera moved:', moved.toFixed(2));
-check('cinema camera moves', moved > 0.3);
-// 数ショットぶんスクリーンショット
-for (let s = 0; s < 3; s++) {
-  await page.evaluate(() => window.__wall.forceNextShot());
+check('demo camera moves', moved > 0.3);
+// ビートを進めながらスクリーンショット（全景/近接の各構図を確認）
+const seenShots = new Set();
+for (let s = 0; s < 4; s++) {
+  const beat = await page.evaluate(() => window.__wall.demoBeat());
+  seenShots.add(beat.shot);
   await page.evaluate(() => new Promise(r => setTimeout(() => {
     window.__shot2 = document.querySelector('canvas.gl').toDataURL('image/png');
     r();
-  }, 1200)));
+  }, 1000)));
   const data = await page.evaluate(() => window.__shot2);
   const { writeFileSync } = await import('fs');
-  writeFileSync(`wall-cine-${s + 1}.png`, Buffer.from(data.split(',')[1], 'base64'));
+  writeFileSync(`wall-demo-${s + 1}-${beat.shot}.png`, Buffer.from(data.split(',')[1], 'base64'));
+  await page.evaluate(() => window.__wall.forceNextShot());
 }
-// アトラクト自動切替: 最大 40 秒待って current が変わること
+console.log('demo shots seen:', [...seenShots].join(', '));
+check('demo cycles through shots', seenShots.size >= 3);
+// デモが自動で絵を切り替えること（振付の最初の fire まで待つ）
 const beforeAuto = await page.evaluate(() => window.__wall.current());
 let autoChanged = false;
 for (let w = 0; w < 80 && !autoChanged; w++) {
   await page.waitForTimeout(500);
   autoChanged = (await page.evaluate(() => window.__wall.current())) !== beforeAuto;
 }
-check('cinema auto-advances image', autoChanged);
+check('demo auto-advances image', autoChanged);
 await page.evaluate(() => window.__wall.toggleCamera());
 check('cam back to front', (await page.evaluate(() => window.__wall.camMode())) === 'front');
 
