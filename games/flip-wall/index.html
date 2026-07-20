@@ -662,22 +662,26 @@ function shotLib() {
     edgeGlide:   { fov: 38, pos: u => [W * 0.55, lerp(H * 0.3, -H * 0.3, u), 3.2], look: u => [W * 0.1, lerp(H * 0.12, -H * 0.12, u), 0.8] },
     pushIn:      { fov: 35, pos: u => [lerp(-W * 0.12, W * 0.04, u), lerp(-H * 0.12, H * 0.04, u), lerp(8, 3.4, u)], look: u => [lerp(-W * 0.12, W * 0.04, u) + 1.5, lerp(-H * 0.12, H * 0.04, u) + 1, 0] },
     wideOrbit:   { fov: BASE_FOV, pos: u => { const a = lerp(0.25, -0.25, u); return [Math.sin(a) * D * 1.12, H * 0.06, Math.cos(a) * D * 1.12]; }, look: () => [0, 0, 0] },
+    // 切替の瞬間を接写・斜めから見るショット。ボクセルが立体的にめくれる様子を見せる用。
+    // φ≈35〜50°の強めの斜めで側面が見える。距離Rは壁幅に比例（数十キューブが画角に入る）
+    flipCloseA:  { fov: 50, pos: u => { const a = lerp(0.62, 0.88, u), R = W * 0.26; return [Math.sin(a) * R, lerp(-H * 0.10, H * 0.03, u), Math.cos(a) * R]; }, look: u => [0, lerp(-H * 0.03, H * 0.02, u), 0] },
+    flipCloseB:  { fov: 50, pos: u => { const a = lerp(-0.62, -0.88, u), R = W * 0.26; return [Math.sin(a) * R, lerp(H * 0.10, -H * 0.03, u), Math.cos(a) * R]; }, look: u => [0, lerp(H * 0.03, -H * 0.02, u), 0] },
   };
 }
 
 // SNS向けデモの振付。全5パターンを順に網羅する。
 // 全景ショット(reveal/pullback)で絵を見せ、その途中で切替を起こし、続く近接ショットでディテールを見せる。
 const DEMO_BEATS = [
-  { shot: 'reveal',      dur: 5.0, fire: { at: 3.0, pattern: 'ripple' } },
-  { shot: 'edgeGlide',   dur: 4.0 },
-  { shot: 'reveal',      dur: 4.6, fire: { at: 2.6, pattern: 'sweep' } },
-  { shot: 'lowDolly',    dur: 4.0 },
-  { shot: 'pullback',    dur: 4.8, fire: { at: 2.6, pattern: 'spiral' } },
-  { shot: 'cornerOrbit', dur: 4.5 },
-  { shot: 'reveal',      dur: 4.6, fire: { at: 2.6, pattern: 'random' } },
-  { shot: 'pushIn',      dur: 4.0 },
-  { shot: 'pullback',    dur: 5.6, fire: { at: 1.8, pattern: 'assemble' } }, // フィナーレ: 全景で集合が炸裂→再集合
-  { shot: 'wideOrbit',   dur: 4.6 },
+  { shot: 'reveal',      dur: 3.8 },                                        // 現在の絵を全景で見せる
+  { shot: 'flipCloseA',  dur: 4.6, fire: { at: 1.0, pattern: 'ripple' } },  // 寄り斜めで波紋のめくれを接写
+  { shot: 'reveal',      dur: 3.4 },                                        // 切替後の絵を全景でひと呼吸
+  { shot: 'flipCloseB',  dur: 4.6, fire: { at: 1.0, pattern: 'sweep' } },   // 逆アングルからスイープを接写
+  { shot: 'cornerOrbit', dur: 4.0 },
+  { shot: 'flipCloseA',  dur: 4.6, fire: { at: 1.0, pattern: 'spiral' } },  // 渦を接写
+  { shot: 'pullback',    dur: 3.6 },                                        // 引いて全体を見せる
+  { shot: 'flipCloseB',  dur: 4.6, fire: { at: 1.0, pattern: 'random' } },  // ランダムのきらめきを接写
+  { shot: 'pullback',    dur: 5.6, fire: { at: 1.8, pattern: 'assemble' } },// フィナーレ: 全景で集合が炸裂→再集合
+  { shot: 'wideOrbit',   dur: 4.4 },
 ];
 
 let demoLib = null, demoIdx = 0, beatT = 0, beatFired = false;
