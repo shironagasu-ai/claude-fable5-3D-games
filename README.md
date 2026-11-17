@@ -18,6 +18,7 @@ Claude の **Fable モデルにどこまで 3D ゲーム開発ができるか**�
 | 5 | **Swarm** 🐟 | 発光魚2,200体の群れを捕食者から守る（Boids群体シミュレーション） | [Play](https://shironagasu-ai.github.io/claude-fable5-3D-games/games/swarm/) |
 | 6 | **Drone Arena** 🎯 | ウェーブ制ツインスティック・シューター（敵AIステートマシン） | [Play](https://shironagasu-ai.github.io/claude-fable5-3D-games/games/drone-arena/) |
 | 7 | **Flip Wall** 🖼️ | イラストをアップロードして飾るボクセル壁ギャラリー（GPU頂点アニメ・最大20万粒子・ベンチマーク付き） | [Play](https://shironagasu-ai.github.io/claude-fable5-3D-games/games/flip-wall/) |
+| 8 | **Chroma Shift** 🌈 | RGB 3層をずらして白い道を作るレトロ・ドット絵パズル（ポストエフェクト・自動ソルバー） | [Play](https://shironagasu-ai.github.io/claude-fable5-3D-games/games/chroma-shift/) |
 
 ## 各作品の技術ハイライト
 
@@ -30,6 +31,7 @@ Claude の **Fable モデルにどこまで 3D ゲーム開発ができるか**�
 | [Swarm](games/swarm/) | Boids 2,200体、均一グリッド空間ハッシュ（近傍探索 ~2.5ms）、InstancedMesh 1ドローコール、swap-remove、サメ型突進AI |
 | [Drone Arena](games/drone-arena/) | 性格の異なる3種の敵AI（自爆突進/側面急襲/カイティング砲撃）、弾・パーティクルのプール、画面シェイク等のゲームフィール |
 | [Flip Wall](games/flip-wall/) | GPU駆動アニメ（クォータニオン補間を頂点シェーダーで計算）、6面=6画像のカスタムシェーダー、5種の切替パターン、シネマカメラ、FPS計測ベンチマーク |
+| [Chroma Shift](games/chroma-shift/) | 256×192 の低解像度描画 → 半解像度ブルーム → 湾曲・色収差・走査線・RGBマスク・ノイズ・8色ディザの多段ポストエフェクト（個別に切替可）、RGB 層をチャンネル別に合成するシェーダー、ずらし回数最小の幅優先ソルバー（HINT・ステージ生成・E2E 検証に共用） |
 
 ## リポジトリ構成と方針
 

@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Chroma Shift</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #07070d; --panel: #12121e; --line: #2a2a40; --text: #d8d8e8; --dim: #8888a0; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; overflow: hidden; touch-action: manipulation; }
+  #app { height: 100dvh; display: flex; flex-direction: column; }
+  header { height: 44px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    border-bottom: 1px solid var(--line); background: var(--panel); position: relative; }
+  header h1 { font-size: 14px; letter-spacing: 2px; margin: 0; white-space: nowrap; }
+  header h1 b:nth-child(1) { color: #ff5a5a; } header h1 b:nth-child(2) { color: #5aff7a; } header h1 b:nth-child(3) { color: #6a8cff; }
+  header .sp { flex: 1; }
+  header a { color: var(--dim); font-size: 12px; text-decoration: none; white-space: nowrap; }
+  @media (max-width: 440px) { header h1 { display: none; } header .sp { flex: 0; } header { justify-content: space-between; } }
+  button { font: inherit; color: var(--text); background: #1c1c2c; border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  button:active { background: #30304a; }
+  button:disabled { opacity: 0.35; cursor: default; }
+  #stageLabel { font-size: 13px; min-width: 76px; text-align: center; }
+  #main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; }
+  #screenCol { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  #screen { width: min(100vw, calc((100dvh - 44px - 40px - 236px) * 4 / 3)); aspect-ratio: 4 / 3; background: #000; position: relative; }
+  #gl { width: 100%; height: 100%; display: block; }
+  #msg { min-height: 40px; width: 100%; max-width: 720px; padding: 6px 12px; font-size: 13px; line-height: 1.35;
+    color: #c8c8dc; text-align: center; display: flex; align-items: center; justify-content: center; }
+  #msg.warn { color: #ffb070; } #msg.hint { color: #9fe0ff; }
+  #pad { flex: none; display: grid; gap: 8px; padding: 6px 10px 10px; width: 100%; max-width: 420px;
+    grid-template-columns: 1fr 1fr; grid-template-areas: "tg tg" "dp ac"; }
+  #targets { grid-area: tg; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 6px; }
+  #targets button { padding: 9px 0; font-weight: bold; }
+  #targets button[data-t="-1"].on { background: #e8e8f0; color: #101018; }
+  #targets button[data-t="0"] { color: #ff6a6a; } #targets button[data-t="0"].on { background: #ff5a5a; color: #200; }
+  #targets button[data-t="1"] { color: #6aff8a; } #targets button[data-t="1"].on { background: #5aff7a; color: #020; }
+  #targets button[data-t="2"] { color: #7a9cff; } #targets button[data-t="2"].on { background: #6a8cff; color: #002; }
+  #targets button.locked { opacity: 0.3; }
+  #dpad { grid-area: dp; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 44px); gap: 4px; }
+  #dpad button { font-size: 18px; padding: 0; }
+  #actions { grid-area: ac; display: grid; gap: 4px; grid-template-rows: repeat(3, 44px); }
+  #fxPanel { position: absolute; right: 8px; top: 48px; z-index: 5; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; display: none; min-width: 190px; }
+  #fxPanel.open { display: block; }
+  #fxPanel label { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+  #fxPanel .presets { display: flex; gap: 6px; margin-bottom: 6px; }
+  #fxPanel .presets button { flex: 1; padding: 4px 0; font-size: 12px; }
+  .keys { font-size: 11px; color: var(--dim); text-align: center; padding: 0 8px 6px; display: none; }
+  @media (orientation: landscape) {
+    #main { flex-direction: row; justify-content: center; align-items: flex-start; }
+    #screenCol { width: auto; }
+    #screen { width: min(calc(100vw - 250px), calc((100dvh - 44px - 44px) * 4 / 3)); }
+    #msg { max-width: none; }
+    #pad { width: 240px; padding-top: 12px; }
+    #side { display: flex; flex-direction: column; }
+    .keys { display: block; text-align: left; padding: 4px 12px; line-height: 1.7; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><b>CHRO</b><b>MA SH</b><b>IFT</b></h1>
+    <span class="sp"></span>
+    <button id="prev" aria-label="前のステージ">◀</button>
+    <span id="stageLabel">STAGE 1</span>
+    <button id="next" aria-label="次のステージ">▶</button>
+    <button id="fxBtn">FX</button>
+    <button id="muteBtn" aria-label="音の切替">♪</button>
+    <a href="../../">一覧</a>
+    <div id="fxPanel">
+      <div class="presets"><button data-preset="crt">CRT</button><button data-preset="soft">SOFT</button><button data-preset="raw">RAW</button></div>
+      <label><input type="checkbox" data-fx="bloom">ブルーム</label>
+      <label><input type="checkbox" data-fx="scan">走査線</label>
+      <label><input type="checkbox" data-fx="mask">RGB マスク</label>
+      <label><input type="checkbox" data-fx="curve">画面の湾曲</label>
+      <label><input type="checkbox" data-fx="ab">色収差</label>
+      <label><input type="checkbox" data-fx="noise">ノイズ</label>
+      <label><input type="checkbox" data-fx="dither">8色ディザ</label>
+    </div>
+  </header>
+  <div id="main">
+    <div id="screenCol">
+      <div id="screen"><canvas id="gl"></canvas></div>
+      <div id="msg"></div>
+    </div>
+    <div id="side">
+      <div id="pad">
+        <div id="targets">
+          <button data-t="-1">YOU</button><button data-t="0">R</button><button data-t="1">G</button><button data-t="2">B</button>
+        </div>
+        <div id="dpad">
+          <span></span><button data-d="0,-1">▲</button><span></span>
+          <button data-d="-1,0">◀</button><span></span><button data-d="1,0">▶</button>
+          <span></span><button data-d="0,1">▼</button><span></span>
+        </div>
+        <div id="actions">
+          <button id="undo">UNDO</button><button id="reset">RESET</button><button id="hint">HINT</button>
+        </div>
+      </div>
+      <div class="keys">
+        矢印 / WASD: 動かす<br>Q: 自分　1 2 3: 赤 緑 青の層<br>Tab: 対象を切替<br>Z: 1手戻す　R: やり直し<br>H: ヒント　Enter: 次へ
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from '../../vendor/three-0.170.0.module.min.js';
+
+/*CORE-BEGIN*/
+// ---- 規則（描画に依存しない純関数。tests からもこの区間を読み込む） ----
+// 色は 3 ビット: 赤=1, 緑=2, 青=4。3 層が重なった白(7)のマスだけ歩ける。
+// 層は 1 マスずつずらせる。ただし自分の足元が白のままになる場合だけ。
+// クリスタルは、そのマスが指定色とちょうど同じになったら点灯し、以後は消えない。
+function parseLevel(d) {
+  const w = d.rows[0].length, h = d.rows.length;
+  const base = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) base[y * w + x] = +d.rows[y][x];
+  return {
+    w, h, base, M: d.M ?? 2,
+    mov: ['R', 'G', 'B'].map(c => d.mov.includes(c)),
+    off0: d.off.flat(), start: d.start, exit: d.exit,
+    cry: (d.cry || []).map(c => ({ x: c[0], y: c[1], k: c[2] })),
+    par: d.par || 0, tip: d.tip || '',
+  };
+}
+function colorAt(L, off, x, y) {
+  if (x < 0 || y < 0 || x >= L.w || y >= L.h) return 0;
+  let c = 0;
+  for (let i = 0; i < 3; i++) {
+    const sx = x - off[i * 2], sy = y - off[i * 2 + 1];
+    if (sx >= 0 && sy >= 0 && sx < L.w && sy < L.h && (L.base[sy * L.w + sx] >> i & 1)) c |= 1 << i;
+  }
+  return c;
+}
+function litMask(L, off, lit) {
+  L.cry.forEach((c, i) => { if (colorAt(L, off, c.x, c.y) === c.k) lit |= 1 << i; });
+  return lit;
+}
+function initState(L) {
+  const off = L.off0.slice();
+  return { px: L.start[0], py: L.start[1], off, lit: litMask(L, off, 0) };
+}
+function stepPlayer(L, s, dx, dy) {
+  const x = s.px + dx, y = s.py + dy;
+  if (colorAt(L, s.off, x, y) !== 7) return 'wall';
+  return { px: x, py: y, off: s.off, lit: s.lit };
+}
+function stepLayer(L, s, c, dx, dy) {
+  if (!L.mov[c]) return 'lock';
+  const off = s.off.slice();
+  off[c * 2] += dx; off[c * 2 + 1] += dy;
+  if (Math.abs(off[c * 2]) > L.M || Math.abs(off[c * 2 + 1]) > L.M) return 'limit';
+  if (colorAt(L, off, s.px, s.py) !== 7) return 'foot';
+  return { px: s.px, py: s.py, off, lit: litMask(L, off, s.lit) };
+}
+function isClear(L, s) {
+  return s.px === L.exit[0] && s.py === L.exit[1] && s.lit === (1 << L.cry.length) - 1;
+}
+function keyOf(s) {
+  let k = s.lit;
+  for (let i = 0; i < 6; i++) k = k * 7 + (s.off[i] + 3);
+  return (k * 16 + s.px) * 16 + s.py;
+}
+// ずらし回数が最小の手順を探す（歩きはコスト 0、ずらしはコスト 1 の幅優先探索）
+function solve(L, s0, cap) {
+  cap = cap || 400000;
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const par = new Map();
+  let cur = [[s0, null, null]], next = [], n = 0, goal = null;
+  while (cur.length && goal === null) {
+    for (let i = 0; i < cur.length; i++) {
+      const [s, pk, act] = cur[i];
+      const k = keyOf(s);
+      if (par.has(k)) continue;
+      par.set(k, [pk, act]);
+      if (++n > cap) return null;
+      if (isClear(L, s)) { goal = k; break; }
+      for (const [dx, dy] of DIRS) {
+        const t = stepPlayer(L, s, dx, dy);
+        if (typeof t === 'object' && !par.has(keyOf(t))) cur.push([t, k, { t: 'm', dx, dy }]);
+        for (let c = 0; c < 3; c++) {
+          const u = stepLayer(L, s, c, dx, dy);
+          if (typeof u === 'object' && !par.has(keyOf(u))) next.push([u, k, { t: 's', c, dx, dy }]);
+        }
+      }
+    }
+    cur = next; next = [];
+  }
+  if (goal === null) return null;
+  const acts = [];
+  for (let k = goal; par.get(k)[1]; k = par.get(k)[0]) acts.push(par.get(k)[1]);
+  acts.reverse();
+  return { acts, shifts: acts.filter(a => a.t === 's').length, states: n };
+}
+
+const LEVELS = [
+/*LEVELS-BEGIN*/
+{ rows: ["7020102","7750077","0771077","0077777"], M: 2, mov: 'R', off: [[1,-1],[0,0],[0,0]], start: [6,2], exit: [0,1], cry: [], par: 2, tip: '赤の層だけ動かせる。R（キー 1）を選んで矢印でずらし、白い道をつなげよう' },
+{ rows: ["00420000","47640477","47700777","04700777","34777777"], M: 2, mov: 'RG', off: [[1,-1],[-1,2],[0,0]], start: [5,3], exit: [0,1], cry: [], par: 5, tip: '緑の層も動かせる。自分の足元が白でなくなる向きにはずらせない' },
+{ rows: ["777777704","740100001","771007010","777777006","777777211","774000151"], M: 2, mov: 'RGB', off: [[-1,2],[1,1],[-1,1]], start: [1,5], exit: [5,0], cry: [], par: 6, tip: '3 色すべて動かせる。迷ったら HINT（H キー）' },
+{ rows: ["770640110","770000004","770127770","774014770","770777745","777777020"], M: 2, mov: 'RG', off: [[0,1],[-2,1],[0,0]], start: [4,4], exit: [0,1], cry: [[8,5,3]], par: 6, tip: '◆クリスタル: そのマスの色が印の色（Y=赤+緑 M=赤+青 C=緑+青）になると点灯。全部点灯で出口が開く' },
+{ rows: ["0414602047","2141624437","0252000107","0000000407","7777720777","7777777777","7777777703"], M: 2, mov: 'RGB', off: [[2,0],[2,0],[1,-2]], start: [3,4], exit: [8,0], cry: [], par: 9 },
+{ rows: ["2230002060","2414000004","0000300073","2770004772","7774710777","7777707777","7777777777"], M: 2, mov: 'RGB', off: [[-2,-2],[-1,0],[-1,1]], start: [1,4], exit: [9,1], cry: [[4,1,3]], par: 10 },
+{ rows: ["00007777777","04057777777","00457777777","27777774070","07777774060","27000002000","24304106045"], M: 2, mov: 'RGB', off: [[2,-2],[-1,-2],[2,2]], start: [8,2], exit: [0,2], cry: [[7,3,5],[0,3,5]], par: 11 },
+{ rows: ["020413004420","200100007774","010164607777","047720140777","177742017775","777737777264","777777277001","177777071020"], M: 2, mov: 'RGB', off: [[0,-2],[-2,-2],[-2,0]], start: [3,5], exit: [10,7], cry: [], par: 13 },
+{ rows: ["122156710103","204200164000","777777040043","770407700001","721407777770","740077777771","777414777777","703400577771"], M: 2, mov: 'RGB', off: [[0,-1],[1,2],[1,-2]], start: [4,4], exit: [11,3], cry: [[5,0,3],[6,5,6]], par: 14 },
+/*LEVELS-END*/
+];
+/*CORE-END*/
+
+// ---- 定数 ----
+const RW = 256, RH = 192, CELL = 16, FIELD_Y = 22, FIELD_H = 144;
+const NAMES = ['赤', '緑', '青'], ARROW = { '1,0': '→', '-1,0': '←', '0,1': '↓', '0,-1': '↑' };
+const CRY_COL = { 3: '#ffe24a', 5: '#ff5ae0', 6: '#4ae8ff' }, CRY_CH = { 3: 'Y', 5: 'M', 6: 'C' };
+const FX_PRESETS = {
+  crt: { bloom: 1, scan: 1, mask: 1, curve: 1, ab: 1, noise: 1, dither: 0 },
+  soft: { bloom: 1, scan: 0, mask: 0, curve: 0, ab: 1, noise: 0, dither: 0 },
+  raw: { bloom: 0, scan: 0, mask: 0, curve: 0, ab: 0, noise: 0, dither: 0 },
+};
+
+// ---- 保存 ----
+const SAVE_KEY = 'chroma-shift-v1';
+let save = { unlocked: 1, best: {}, fx: { ...FX_PRESETS.crt }, mute: false };
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch (e) {}
+const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
+
+// ---- 音（矩形波の短い音だけ） ----
+let actx = null;
+function beep(freq, dur, opt = {}) {
+  if (save.mute) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const t = actx.currentTime + (opt.delay || 0);
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = opt.type || 'square';
+    o.frequency.setValueAtTime(freq, t);
+    if (opt.to) o.frequency.exponentialRampToValueAtTime(opt.to, t + dur);
+    g.gain.setValueAtTime(opt.vol || 0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  } catch (e) {}
+}
+
+// ---- ゲーム状態 ----
+let li = 0, L = null, S = null, hist = [], shifts = 0, mode = 'title', sel = -1, clearAt = 0;
+const disp = { off: [0, 0, 0, 0, 0, 0], px: 0, py: 0 };
+const fxs = { abx: 0, aby: 0, shake: 0, flash: 0 };
+const $ = id => document.getElementById(id);
+const msgEl = $('msg');
+function setMsg(text, cls) { msgEl.textContent = text; msgEl.className = cls || ''; }
+
+function loadLevel(i, keepMode) {
+  li = Math.max(0, Math.min(LEVELS.length - 1, i));
+  L = parseLevel(LEVELS[li]);
+  S = initState(L); hist = []; shifts = 0; sel = -1;
+  disp.off = S.off.slice(); disp.px = S.px; disp.py = S.py;
+  if (!keepMode) mode = 'play';
+  uploadMask();
+  refreshUI();
+  setMsg(L.tip || '白いマスだけ歩ける。層をずらして出口までの道を作ろう');
+}
+function refreshUI() {
+  $('stageLabel').textContent = 'STAGE ' + (li + 1);
+  $('prev').disabled = li === 0;
+  $('next').disabled = li + 1 >= Math.min(save.unlocked, LEVELS.length);
+  document.querySelectorAll('#targets button').forEach(b => {
+    const t = +b.dataset.t;
+    b.classList.toggle('on', t === sel);
+    b.classList.toggle('locked', t >= 0 && !L.mov[t]);
+  });
+  $('undo').disabled = !hist.length;
+}
+function select(t) {
+  if (mode !== 'play') return;
+  if (t >= 0 && !L.mov[t]) { setMsg(NAMES[t] + 'の層は、このステージでは固定されている', 'warn'); beep(110, 0.12); return; }
+  sel = t; beep(t < 0 ? 520 : 330 + t * 110, 0.04);
+  refreshUI();
+}
+function cycleSel() {
+  const order = [-1, 0, 1, 2].filter(t => t < 0 || L.mov[t]);
+  select(order[(order.indexOf(sel) + 1) % order.length]);
+}
+function act(dx, dy) {
+  if (mode === 'title') { start(); return; }
+  if (mode !== 'play') return;
+  const t = sel < 0 ? stepPlayer(L, S, dx, dy) : stepLayer(L, S, sel, dx, dy);
+  if (typeof t !== 'object') {
+    fxs.shake = 1; beep(90, 0.12, { vol: 0.06 });
+    if (t === 'foot') setMsg('足元が白でなくなるので、その向きにはずらせない', 'warn');
+    else if (t === 'limit') setMsg('これ以上はずらせない（各層は元の位置から ' + L.M + ' マスまで）', 'warn');
+    else if (t === 'wall') setMsg('白いマスだけ歩ける', 'warn');
+    return;
+  }
+  hist.push({ s: S, shifts });
+  const litBefore = S.lit;
+  S = t;
+  if (sel >= 0) {
+    shifts++; fxs.abx = dx * 3; fxs.aby = dy * 3;
+    beep(220 + sel * 80, 0.09, { to: 330 + sel * 80 });
+  } else beep(660, 0.03, { vol: 0.03 });
+  if (S.lit !== litBefore) {
+    fxs.flash = 0.25; [660, 880, 1320].forEach((f, i) => beep(f, 0.08, { delay: i * 0.06 }));
+    setMsg(S.lit === (1 << L.cry.length) - 1 ? 'クリスタルが全部点灯。出口が開いた' : 'クリスタルが点灯した');
+  }
+  if (isClear(L, S)) onClear();
+  refreshUI();
+}
+function onClear() {
+  mode = 'clear'; clearAt = performance.now(); fxs.flash = 0.7;
+  const b = save.best[li];
+  if (b === undefined || shifts < b) save.best[li] = shifts;
+  save.unlocked = Math.max(save.unlocked, Math.min(LEVELS.length, li + 2));
+  persist();
+  [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.14, { delay: i * 0.09 }));
+  setMsg(li + 1 < LEVELS.length ? 'クリア。Enter か画面タップで次のステージへ' : '全ステージクリア。おつかれさまでした');
+}
+function undo() {
+  if (mode !== 'play' || !hist.length) return;
+  const h = hist.pop(); S = h.s; shifts = h.shifts; beep(300, 0.05, { to: 200 });
+  refreshUI();
+}
+function reset() { if (mode === 'play' || mode === 'clear') { loadLevel(li); beep(200, 0.1, { to: 100 }); } }
+function start() { mode = 'play'; loadLevel(Math.min(save.unlocked, LEVELS.length) - 1); beep(440, 0.1, { to: 880 }); }
+function advance() {
+  if (mode === 'title') start();
+  else if (mode === 'clear' && performance.now() - clearAt > 400) { if (li + 1 < LEVELS.length) loadLevel(li + 1); else { mode = 'title'; loadLevel(0, true); } }
+}
+function hint() {
+  if (mode !== 'play') return;
+  const r = solve(L, S, 300000);
+  if (!r) { setMsg('ここからの手順が見つからない。Z で戻すか R でやり直そう', 'warn'); return; }
+  let walk = '', i = 0;
+  while (i < r.acts.length && r.acts[i].t === 'm') walk += ARROW[r.acts[i].dx + ',' + r.acts[i].dy], i++;
+  const a = r.acts[i];
+  const parts = [];
+  if (walk) parts.push('歩く ' + walk);
+  if (a) parts.push(NAMES[a.c] + 'の層を ' + ARROW[a.dx + ',' + a.dy] + ' へ');
+  setMsg('ヒント: ' + parts.join(' → ') + (a ? '（残りのずらし ' + r.shifts + ' 回）' : ''), 'hint');
+}
+
+// ---- 入力 ----
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  const dir = { arrowup: [0, -1], arrowdown: [0, 1], arrowleft: [-1, 0], arrowright: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] }[k];
+  if (dir) { e.preventDefault(); act(dir[0], dir[1]); return; }
+  if (k === 'enter' || k === ' ') { e.preventDefault(); if (mode === 'play') { if (k === ' ') cycleSel(); } else advance(); return; }
+  if (mode === 'title') { if (k.length === 1) start(); return; }
+  if (k === 'tab') { e.preventDefault(); cycleSel(); }
+  else if (k === 'q' || k === '0') select(-1);
+  else if (k === '1' || k === '2' || k === '3') select(+k - 1);
+  else if (k === 'z' || k === 'u') undo();
+  else if (k === 'r') reset();
+  else if (k === 'h') hint();
+});
+document.querySelectorAll('#targets button').forEach(b => b.addEventListener('click', () => { if (mode === 'title') start(); else select(+b.dataset.t); }));
+document.querySelectorAll('#dpad button').forEach(b => b.addEventListener('click', () => { const [x, y] = b.dataset.d.split(',').map(Number); act(x, y); }));
+$('undo').addEventListener('click', undo);
+$('reset').addEventListener('click', reset);
+$('hint').addEventListener('click', hint);
+$('prev').addEventListener('click', () => { if (li > 0) loadLevel(li - 1); });
+$('next').addEventListener('click', () => { if (li + 1 < Math.min(save.unlocked, LEVELS.length)) loadLevel(li + 1); });
+$('screen').addEventListener('click', advance);
+$('muteBtn').addEventListener('click', () => { save.mute = !save.mute; persist(); syncMute(); });
+function syncMute() { $('muteBtn').style.opacity = save.mute ? 0.35 : 1; }
+$('fxBtn').addEventListener('click', () => $('fxPanel').classList.toggle('open'));
+function syncFx() { document.querySelectorAll('#fxPanel input').forEach(i => { i.checked = !!save.fx[i.dataset.fx]; }); }
+document.querySelectorAll('#fxPanel input').forEach(i => i.addEventListener('change', () => { save.fx[i.dataset.fx] = i.checked ? 1 : 0; persist(); }));
+document.querySelectorAll('#fxPanel [data-preset]').forEach(b => b.addEventListener('click', () => { save.fx = { ...FX_PRESETS[b.dataset.preset] }; persist(); syncFx(); }));
+
+// ---- 描画: 低解像度(256x192)に描いてからポストエフェクトを通して拡大する ----
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.autoClear = false;
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+const scene = new THREE.Scene(); scene.add(quad);
+const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+const mkRT = (w, h) => new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
+const rtScene = mkRT(RW, RH), rtA = mkRT(RW / 2, RH / 2), rtB = mkRT(RW / 2, RH / 2);
+
+// スプライトと文字を描く 2D キャンバス（低解像度パスで重ねる）
+const ov = document.createElement('canvas'); ov.width = RW; ov.height = RH;
+const g2 = ov.getContext('2d');
+const ovTex = new THREE.CanvasTexture(ov);
+ovTex.minFilter = ovTex.magFilter = THREE.NearestFilter; ovTex.generateMipmaps = false;
+
+let maskTex = null;
+function uploadMask() {
+  const data = new Uint8Array(L.w * L.h * 4);
+  for (let i = 0; i < L.w * L.h; i++) for (let c = 0; c < 3; c++) data[i * 4 + c] = (L.base[i] >> c & 1) * 255;
+  if (maskTex) maskTex.dispose();
+  maskTex = new THREE.DataTexture(data, L.w, L.h, THREE.RGBAFormat);
+  maskTex.minFilter = maskTex.magFilter = THREE.NearestFilter; maskTex.needsUpdate = true;
+  worldMat.uniforms.tMask.value = maskTex;
+  worldMat.uniforms.uGrid.value.set(L.w, L.h);
+  worldMat.uniforms.uOrigin.value.set(originX(), originY());
+}
+const originX = () => Math.floor((RW - L.w * CELL) / 2);
+const originY = () => FIELD_Y + Math.floor((FIELD_H - L.h * CELL) / 2);
+
+// 1) ワールド: 3 層をチャンネル別に描いて加算する。層ごとに模様を変え、色だけに頼らず読めるようにする
+const worldMat = new THREE.ShaderMaterial({
+  vertexShader: VERT, depthTest: false,
+  uniforms: {
+    tMask: { value: null }, tOv: { value: ovTex }, uGrid: { value: new THREE.Vector2(1, 1) }, uOrigin: { value: new THREE.Vector2() },
+    uOff: { value: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()] },
+    uTime: { value: 0 }, uSel: { value: -1 }, uDither: { value: 0 }, uFlash: { value: 0 }, uDim: { value: 1 },
+  },
+  fragmentShader: `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D tMask, tOv;
+    uniform vec2 uGrid, uOrigin, uOff[3];
+    uniform float uTime, uSel, uDither, uFlash, uDim;
+    float bayer2(vec2 a){ a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+    float bayer4(vec2 a){ return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    void main(){
+      vec2 pp = floor(vec2(vUv.x * ${RW}.0, (1.0 - vUv.y) * ${RH}.0)) + 0.5;
+      vec2 g = (pp - uOrigin) / ${CELL}.0;
+      vec3 col = vec3(0.012, 0.012, 0.03);
+      if (g.x >= 0.0 && g.y >= 0.0 && g.x < uGrid.x && g.y < uGrid.y) {
+        vec2 cf = floor(fract(g) * ${CELL}.0);
+        col = (cf.x < 1.0 || cf.y < 1.0) ? vec3(0.075, 0.075, 0.13) : vec3(0.035, 0.035, 0.07);
+        vec3 ch = vec3(0.0); float n = 0.0;
+        for (int c = 0; c < 3; c++) {
+          vec2 q = g - uOff[c];
+          vec2 ci = floor(q);
+          if (ci.x < 0.0 || ci.y < 0.0 || ci.x >= uGrid.x || ci.y >= uGrid.y) continue;
+          vec4 t = texture2D(tMask, (ci + 0.5) / uGrid);
+          float on = c == 0 ? t.r : (c == 1 ? t.g : t.b);
+          if (on < 0.5) continue;
+          n += 1.0;
+          vec2 f = floor(fract(q) * ${CELL}.0 + 0.001);
+          if (f.x < 1.0 || f.y < 1.0 || f.x > 14.0 || f.y > 14.0) continue;   // タイル間の 1px のすき間
+          float pat = 0.0;
+          if (c == 0) pat = mod(f.x + f.y, 4.0) < 1.0 ? 1.0 : 0.0;                              // 赤: 斜線
+          else if (c == 1) pat = (mod(f.x, 4.0) == 1.0 && mod(f.y, 4.0) == 1.0) ? 1.0 : 0.0;    // 緑: 点
+          else pat = mod(f.y, 4.0) == 2.0 ? 1.0 : 0.0;                                          // 青: 横線
+          float v = 1.0 - 0.5 * pat;
+          if (abs(uSel - float(c)) < 0.5) v *= 1.0 + 0.3 * sin(uTime * 7.0);
+          if (c == 0) ch.r = v; else if (c == 1) ch.g = v; else ch.b = v;
+        }
+        float mx = max(ch.r, max(ch.g, ch.b)), mn = min(ch.r, min(ch.g, ch.b));
+        if (mx > 0.0) {
+          if (n > 2.5) col = mix(ch, vec3(step(0.01, mn)), 0.72);   // 3 層の重なり = 白い床
+          else col = ch * 0.6;
+        }
+      }
+      col *= uDim;
+      vec4 o = texture2D(tOv, vUv);
+      col = mix(col, o.rgb, o.a);
+      col += uFlash;
+      if (uDither > 0.5) col = step(vec3(0.08 + 0.84 * bayer4(pp)), col);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }`,
+});
+
+// 2) ブルーム: 明部抽出 + 横ぼかし → 縦ぼかし（半解像度）
+const blurMat = new THREE.ShaderMaterial({
+  vertexShader: VERT, depthTest: false,
+  uniforms: { tSrc: { value: null }, uDir: { value: new THREE.Vector2() }, uThr: { value: 0 } },
+  fragmentShader: `
+    precision highp float;
+    varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 uDir; uniform float uThr;
+    void main(){
+      vec3 s = vec3(0.0);
+      float w[5]; w[0] = 0.227; w[1] = 0.194; w[2] = 0.122; w[3] = 0.054; w[4] = 0.016;
+      for (int i = -4; i <= 4; i++) {
+        vec3 c = texture2D(tSrc, vUv + uDir * float(i)).rgb;
+        s += max(c - uThr, 0.0) * w[i < 0 ? -i : i];
+      }
+      gl_FragColor = vec4(s, 1.0);
+    }`,
+});
+
+// 3) 最終: 湾曲・色収差・ブルーム合成・走査線・RGB マスク・ビネット・ノイズ
+const finalMat = new THREE.ShaderMaterial({
+  vertexShader: VERT, depthTest: false,
+  uniforms: {
+    tScene: { value: rtScene.texture }, tBloom: { value: rtB.texture }, uOut: { value: new THREE.Vector2(1, 1) },
+    uCurve: { value: 0 }, uScan: { value: 0 }, uMask: { value: 0 }, uAb: { value: 0 }, uAbDir: { value: new THREE.Vector2() },
+    uBloom: { value: 0 }, uNoise: { value: 0 }, uTime: { value: 0 }, uShake: { value: new THREE.Vector2() },
+  },
+  fragmentShader: `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D tScene, tBloom;
+    uniform vec2 uOut, uAbDir, uShake;
+    uniform float uCurve, uScan, uMask, uAb, uBloom, uNoise, uTime;
+    const vec2 RES = vec2(${RW}.0, ${RH}.0);
+    vec3 samp(vec2 uv){   // 拡大してもドットの輪郭を保つ補間
+      vec2 t = uv * RES, i = floor(t), f = t - i, sc = uOut / RES;
+      f = clamp(f * sc, 0.0, 0.5) + clamp((f - 1.0) * sc + 0.5, 0.0, 0.5);
+      return texture2D(tScene, (i + f) / RES).rgb;
+    }
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){
+      vec2 c = vUv * 2.0 - 1.0;
+      c *= (1.0 + uCurve * dot(c, c)) / (1.0 + uCurve);
+      vec2 uv = c * 0.5 + 0.5 + uShake / RES;
+      vec2 e = smoothstep(vec2(0.0), vec2(1.5) / RES, uv) * smoothstep(vec2(0.0), vec2(1.5) / RES, 1.0 - uv);
+      float inside = e.x * e.y;
+      vec2 ab = (uv - 0.5) * uAb * 0.012 + uAbDir / RES;
+      vec3 col = vec3(samp(uv + ab).r, samp(uv).g, samp(uv - ab).b);
+      col += texture2D(tBloom, uv).rgb * uBloom;
+      float lines = uOut.y / RES.y;
+      float sl = 0.5 + 0.5 * cos(6.28318 * uv.y * RES.y);
+      col *= 1.0 - uScan * 0.55 * (1.0 - sl) * smoothstep(1.5, 3.0, lines);
+      float m = mod(gl_FragCoord.x, 3.0);
+      vec3 mk = m < 1.0 ? vec3(1.0, 0.72, 0.72) : (m < 2.0 ? vec3(0.72, 1.0, 0.72) : vec3(0.72, 0.72, 1.0));
+      col *= mix(vec3(1.0), mk * 1.18, uMask);
+      col *= 1.0 + 0.22 * uScan;
+      col *= 1.0 - 0.35 * uCurve * 8.0 * dot(c, c) * 0.25;
+      col += (hash(gl_FragCoord.xy + fract(uTime) * 91.0) - 0.5) * 0.06 * uNoise;
+      gl_FragColor = vec4(col * inside, 1.0);
+    }`,
+});
+
+// ---- 3x5 ドットフォント ----
+const FONT = {};
+('A:010101111101101 B:110101110101110 C:011100100100011 D:110101101101110 E:111100110100111 F:111100110100100 ' +
+ 'G:011100101101011 H:101101111101101 I:111010010010111 J:001001001101010 K:101101110101101 L:100100100100111 ' +
+ 'M:101111111101101 N:110101101101101 O:010101101101010 P:110101110100100 Q:010101101111011 R:110101110101101 ' +
+ 'S:011100010001110 T:111010010010010 U:101101101101111 V:101101101101010 W:101101111111101 X:101101010101101 ' +
+ 'Y:101101010010010 Z:111001010100111 0:111101101101111 1:010110010010111 2:110001010100111 3:110001010001110 ' +
+ '4:101101111001001 5:111100110001110 6:011100111101111 7:111001010010010 8:111101111101111 9:111101111001110 ' +
+ '-:000000111000000 /:001001010100100 ::000010000010000 .:000000000000010 !:010010010000010 +:000010111010000 ' +
+ '>:100010001010100 <:001010100010001 *:000101010101000').split(' ').forEach(p => { FONT[p[0]] = p.slice(2); });
+function text(str, x, y, sc, color) {
+  g2.fillStyle = color;
+  for (const chr of str) {
+    const gl = FONT[chr];
+    if (gl) for (let i = 0; i < 15; i++) if (gl[i] === '1') g2.fillRect(x + (i % 3) * sc, y + Math.floor(i / 3) * sc, sc, sc);
+    x += 4 * sc;
+  }
+}
+const textW = (str, sc) => str.length * 4 * sc - sc;
+const textC = (str, y, sc, color) => text(str, Math.round((RW - textW(str, sc)) / 2), y, sc, color);
+function sprite(rows, x, y, pal) {
+  rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) { const p = pal[r[i]]; if (p) { g2.fillStyle = p; g2.fillRect(x + i, y + j, 1, 1); } } });
+}
+const PLAYER = [
+  '............', '...######...', '..########..', '..#oo##oo#..', '..#oo##oo#..', '..########..',
+  '...######...', '..########..', '.##########.', '.#.######.#.', '...##..##...', '...##..##...',
+];
+function diamond(cx, cy, r, color) { g2.fillStyle = color; for (let d = -r; d <= r; d++) g2.fillRect(cx - (r - Math.abs(d)), cy + d, 2 * (r - Math.abs(d)) + 1, 1); }
+
+const now = () => performance.now();
+function drawOverlay(time) {
+  g2.clearRect(0, 0, RW, RH);
+  const ox = originX(), oy = originY();
+  if (mode !== 'title') {
+    // 出口
+    const ex = ox + L.exit[0] * CELL, ey = oy + L.exit[1] * CELL, open = S.lit === (1 << L.cry.length) - 1;
+    g2.fillStyle = '#0c0c18'; g2.fillRect(ex + 1, ey + 1, 14, 14);
+    g2.fillStyle = open ? '#ffffff' : '#70708a'; g2.fillRect(ex + 2, ey + 2, 12, 12);
+    g2.fillStyle = '#0c0c18'; g2.fillRect(ex + 4, ey + 4, 8, 8);
+    if (open) { const cols = ['#ff4a4a', '#4aff6a', '#5a7cff']; for (let i = 0; i < 4; i++) { g2.fillStyle = cols[(i + Math.floor(time * 6)) % 3]; g2.fillRect(ex + 4, ey + 4 + i * 2, 8, 2); } }
+    else { g2.fillStyle = '#70708a'; g2.fillRect(ex + 7, ey + 6, 2, 4); g2.fillRect(ex + 6, ey + 7, 4, 2); }
+    // クリスタル
+    L.cry.forEach((c, i) => {
+      const cx = ox + c.x * CELL + 8, cy = oy + c.y * CELL + 8, lit = S.lit >> i & 1;
+      diamond(cx, cy, 7, '#0c0c18'); diamond(cx, cy, 6, CRY_COL[c.k]);
+      diamond(cx, cy, 4, lit ? '#ffffff' : '#0c0c18');
+      text(CRY_CH[c.k], cx - 1, cy - 2, 1, lit ? '#0c0c18' : CRY_COL[c.k]);
+    });
+    // プレイヤー
+    const bob = Math.floor(time * 4) % 2;
+    sprite(PLAYER, Math.round(ox + disp.px * CELL) + 2, Math.round(oy + disp.py * CELL) + 2 - bob, { '#': '#14142c', o: '#ffffff' });
+    // 上の表示
+    text('STAGE ' + String(li + 1).padStart(2, '0'), 6, 5, 2, '#e8e8f8');
+    const sh = 'SHIFT ' + String(shifts).padStart(2, '0');
+    text(sh, RW - 6 - textW(sh, 2), 3, 2, shifts > L.par ? '#ffb060' : '#e8e8f8');
+    const b = save.best[li];
+    const pr = 'PAR ' + L.par + (b !== undefined ? '  BEST ' + b : '');
+    text(pr, RW - 6 - textW(pr, 1), 15, 1, '#8c8ca8');
+    // 下の表示: 操作対象
+    const items = [['YOU', -1, '#e8e8f8'], ['R', 0, '#ff5a5a'], ['G', 1, '#5aff7a'], ['B', 2, '#6a8cff']];
+    let x = 6;
+    for (const [label, t, colr] of items) {
+      const w = textW(label, 2) + 8, on = t === sel, locked = t >= 0 && !L.mov[t];
+      g2.fillStyle = on ? colr : '#16162a'; g2.fillRect(x, 171, w, 16);
+      text(label, x + 4, 174, 2, on ? '#0c0c18' : (locked ? '#3a3a50' : colr));
+      if (on && Math.floor(time * 3) % 2) { g2.fillStyle = colr; g2.fillRect(x, 189, w, 1); }
+      x += w + 4;
+    }
+    if (L.cry.length) {
+      let cx = RW - 12;
+      for (let i = L.cry.length - 1; i >= 0; i--) { diamond(cx, 179, 5, CRY_COL[L.cry[i].k]); diamond(cx, 179, 3, (S.lit >> i & 1) ? '#ffffff' : '#0c0c18'); cx -= 14; }
+    } else text('Z:UNDO R:RESET H:HINT', RW - 6 - textW('Z:UNDO R:RESET H:HINT', 1), 177, 1, '#5c5c78');
+  }
+  if (mode === 'title') {
+    const s = 3, str = 'CHROMA SHIFT', x0 = Math.round((RW - textW(str, s)) / 2), y0 = 60;
+    const k = Math.max(0, 1 - time / 1.6), wob = Math.sin(time * 1.3) * 1.5;
+    g2.globalCompositeOperation = 'lighter';
+    text(str, x0 - Math.round(k * 40 + 1 + wob), y0, s, '#ff0000');
+    text(str, x0, y0 + Math.round(k * 30), s, '#00ff00');
+    text(str, x0 + Math.round(k * 40 + 1 + wob), y0, s, '#0000ff');
+    g2.globalCompositeOperation = 'source-over';
+    textC('R + G + B = WHITE', 90, 1, '#a8a8c0');
+    if (Math.floor(time * 2) % 2) textC('PRESS ANY KEY / TAP', 122, 2, '#ffffff');
+    textC('STAGE ' + Math.min(save.unlocked, LEVELS.length) + ' / ' + LEVELS.length, 150, 1, '#8c8ca8');
+  }
+  if (mode === 'clear' && now() - clearAt > 250) {
+    g2.fillStyle = 'rgba(8,8,20,0.88)'; g2.fillRect(38, 64, 180, 62);
+    g2.fillStyle = '#e8e8f8'; g2.fillRect(38, 64, 180, 1); g2.fillRect(38, 125, 180, 1);
+    const last = li + 1 >= LEVELS.length;
+    textC(last ? 'ALL CLEAR!' : 'STAGE CLEAR', 72, 3, '#ffffff');
+    textC('SHIFT ' + shifts + '   PAR ' + L.par + (shifts <= L.par ? '  *' : ''), 96, 2, shifts <= L.par ? '#ffe24a' : '#c8c8dc');
+    if (Math.floor(time * 2) % 2) textC(last ? 'ENTER: TITLE' : 'ENTER: NEXT', 114, 1, '#a8a8c0');
+  }
+  ovTex.needsUpdate = true;
+}
+
+// ---- ループ ----
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) renderer.setSize(w, h, false);
+  finalMat.uniforms.uOut.value.set(w, h);
+}
+function pass(mat, target) { quad.material = mat; renderer.setRenderTarget(target); renderer.render(scene, cam); }
+let last = performance.now(), time = 0, frames = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; time += dt; frames++;
+  const k = 1 - Math.exp(-dt * 24);
+  for (let i = 0; i < 6; i++) { disp.off[i] += (S.off[i] - disp.off[i]) * k; if (Math.abs(S.off[i] - disp.off[i]) < 0.02) disp.off[i] = S.off[i]; }
+  disp.px += (S.px - disp.px) * k; disp.py += (S.py - disp.py) * k;
+  const decay = Math.exp(-dt * 9);
+  fxs.abx *= decay; fxs.aby *= decay; fxs.shake *= Math.exp(-dt * 14); fxs.flash *= Math.exp(-dt * 6);
+  resize();
+  drawOverlay(time);
+  const wu = worldMat.uniforms, fu = finalMat.uniforms, fx = save.fx;
+  for (let c = 0; c < 3; c++) wu.uOff.value[c].set(Math.round(disp.off[c * 2] * CELL) / CELL, Math.round(disp.off[c * 2 + 1] * CELL) / CELL);
+  wu.uTime.value = time; wu.uSel.value = mode === 'play' ? sel : -1; wu.uDither.value = fx.dither ? 1 : 0;
+  wu.uFlash.value = fxs.flash; wu.uDim.value = mode === 'title' ? 0.12 : 1;
+  pass(worldMat, rtScene);
+  blurMat.uniforms.tSrc.value = rtScene.texture; blurMat.uniforms.uDir.value.set(1.4 / RW, 0); blurMat.uniforms.uThr.value = 0.35; pass(blurMat, rtA);
+  blurMat.uniforms.tSrc.value = rtA.texture; blurMat.uniforms.uDir.value.set(0, 1.4 / RH); blurMat.uniforms.uThr.value = 0; pass(blurMat, rtB);
+  fu.uTime.value = time;
+  fu.uCurve.value = fx.curve ? 0.07 : 0; fu.uScan.value = fx.scan ? 1 : 0; fu.uMask.value = fx.mask ? 0.5 : 0;
+  fu.uBloom.value = fx.bloom ? 0.75 + (mode === 'clear' ? 0.5 : 0) : 0; fu.uNoise.value = fx.noise ? 1 : 0;
+  fu.uAb.value = fx.ab ? 1 : 0;
+  fu.uAbDir.value.set(fx.ab ? fxs.abx : 0, fx.ab ? -fxs.aby : 0);
+  fu.uShake.value.set(Math.sin(time * 90) * fxs.shake * 1.5, 0);
+  pass(finalMat, null);
+  requestAnimationFrame(frame);
+}
+
+// ---- 起動 ----
+syncFx(); syncMute();
+loadLevel(0, true);
+setMsg('3 色の層が重なった白いマスだけ歩ける。層をずらして出口へ');
+requestAnimationFrame(frame);
+
+// E2E テスト用
+window.__cs = {
+  levels: LEVELS.length,
+  info: () => ({ li, mode, sel, shifts, px: S.px, py: S.py, off: S.off.slice(), lit: S.lit, par: L.par, frames, unlocked: save.unlocked }),
+  solve: () => solve(L, S),
+  goto: i => { save.unlocked = Math.max(save.unlocked, i + 1); loadLevel(i); },
+  setFx: fx => { Object.assign(save.fx, fx); syncFx(); },
+};
+</script>
+</body>
+</html>

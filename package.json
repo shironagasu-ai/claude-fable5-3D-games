@@ -4,7 +4,8 @@
   "type": "module",
   "description": "E2E テスト用の開発依存のみ。ゲーム本体はビルド不要の静的ファイル。",
   "scripts": {
-    "test:flip-wall": "node tests/flip-wall.e2e.mjs"
+    "test:flip-wall": "node tests/flip-wall.e2e.mjs",
+    "test:chroma-shift": "node tests/chroma-shift.e2e.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.48.0"
