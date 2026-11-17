@@ -25,23 +25,57 @@
   #stageLabel { font-size: 13px; min-width: 76px; text-align: center; }
   #main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; }
   #screenCol { display: flex; flex-direction: column; align-items: center; width: 100%; }
-  #screen { width: min(100vw, calc((100dvh - 44px - 40px - 236px) * 4 / 3)); aspect-ratio: 4 / 3; background: #000; position: relative; }
+  #screen { width: min(100vw, calc((100dvh - 44px - 40px - 340px) * 4 / 3)); aspect-ratio: 4 / 3; background: #000; position: relative; }
   #gl { width: 100%; height: 100%; display: block; }
   #msg { min-height: 40px; width: 100%; max-width: 720px; padding: 6px 12px; font-size: 13px; line-height: 1.35;
     color: #c8c8dc; text-align: center; display: flex; align-items: center; justify-content: center; }
   #msg.warn { color: #ffb070; } #msg.hint { color: #9fe0ff; }
-  #pad { flex: none; display: grid; gap: 8px; padding: 6px 10px 10px; width: 100%; max-width: 420px;
-    grid-template-columns: 1fr 1fr; grid-template-areas: "tg tg" "dp ac"; }
-  #targets { grid-area: tg; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 6px; }
-  #targets button { padding: 9px 0; font-weight: bold; }
-  #targets button[data-t="-1"].on { background: #e8e8f0; color: #101018; }
-  #targets button[data-t="0"] { color: #ff6a6a; } #targets button[data-t="0"].on { background: #ff5a5a; color: #200; }
-  #targets button[data-t="1"] { color: #6aff8a; } #targets button[data-t="1"].on { background: #5aff7a; color: #020; }
-  #targets button[data-t="2"] { color: #7a9cff; } #targets button[data-t="2"].on { background: #6a8cff; color: #002; }
-  #targets button.locked { opacity: 0.3; }
-  #dpad { grid-area: dp; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 44px); gap: 4px; }
-  #dpad button { font-size: 18px; padding: 0; }
-  #actions { grid-area: ac; display: grid; gap: 4px; grid-template-rows: repeat(3, 44px); }
+  /* 操作盤: 色版フィルムを重ねる「見当合わせ機」 */
+  #pad { --metal: #1a1a26; --metal2: #23232f; --rim: #34344a; --engrave: #6c6c88;
+    flex: none; display: grid; gap: 10px 12px; width: 100%; max-width: 460px; margin: 0 auto;
+    padding: 12px max(12px, env(safe-area-inset-left, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-right, 0px));
+    grid-template-columns: 1fr auto; grid-template-areas: "tg tg" "dp ac";
+    background: linear-gradient(180deg, var(--metal2), var(--metal)); border-top: 1px solid var(--rim); position: relative; }
+  #pad::before, #pad::after { content: ""; position: absolute; top: 6px; width: 6px; height: 6px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #8a8aa0, #2a2a38 70%); }
+  #pad::before { left: 6px; } #pad::after { right: 6px; }
+  .plate { font-size: 9px; letter-spacing: 2px; color: var(--engrave); text-transform: uppercase; }
+  #targets { grid-area: tg; display: flex; flex-direction: column; gap: 4px; }
+  #targets .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-items: end;
+    padding: 12px 8px 0; border-radius: 6px 6px 0 0; background: #0b0b12; box-shadow: inset 0 2px 6px #000; min-height: 96px; }
+  #targets .slot { height: 6px; border-radius: 0 0 4px 4px; background: #050508; box-shadow: inset 0 2px 3px #000, 0 1px 0 var(--rim); }
+  .film { --c: #fff; --pat: none; position: relative; height: 78px; padding: 0; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+    background: var(--pat), color-mix(in srgb, var(--c) 22%, #0b0b12); color: var(--c);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    transform: translateY(14px); transition: transform 0.14s ease-out, box-shadow 0.14s, background-color 0.14s; }
+  .film::before, .film::after { content: ""; position: absolute; left: 3px; right: 3px; height: 5px;
+    background: repeating-linear-gradient(90deg, transparent 0 3px, #050508 3px 7px); opacity: 0.9; }
+  .film::before { top: 3px; } .film::after { bottom: 3px; }
+  .film b { font-size: 22px; line-height: 1; text-shadow: 0 0 6px color-mix(in srgb, var(--c) 60%, transparent); }
+  .film i { font-style: normal; font-size: 10px; opacity: 0.75; }
+  .film.on { transform: translateY(0); background: var(--pat), color-mix(in srgb, var(--c) 55%, #0b0b12); color: #fff;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--c) 70%, transparent), 0 -2px 0 color-mix(in srgb, var(--c) 90%, #fff) inset; }
+  .film.locked { opacity: 0.28; filter: grayscale(0.6); }
+  .film.locked::after { content: "LOCK"; bottom: auto; top: 50%; height: auto; left: 0; right: 0; transform: translateY(14px) rotate(-12deg);
+    background: none; font-size: 10px; letter-spacing: 2px; color: #fff; }
+  .film[data-t="-1"] { --c: #f2f2ff; border-radius: 10px 10px 3px 3px; }
+  .film[data-t="-1"]::before, .film[data-t="-1"]::after { display: none; }
+  .film[data-t="0"] { --c: #ff5a5a; --pat: repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,0.28) 6px 8px); }
+  .film[data-t="1"] { --c: #5aff7a; --pat: radial-gradient(rgba(0,0,0,0.32) 1.5px, transparent 2px) 0 0 / 8px 8px; }
+  .film[data-t="2"] { --c: #6a8cff; --pat: repeating-linear-gradient(0deg, transparent 0 6px, rgba(0,0,0,0.3) 6px 8px); }
+  #dpad { grid-area: dp; display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 64px); gap: 4px;
+    justify-self: center; padding: 8px; border-radius: 50%; background: radial-gradient(circle, #101018 60%, transparent 61%); }
+  #dpad button { font-size: 22px; padding: 0; border-radius: 10px; border: 1px solid var(--rim);
+    background: linear-gradient(180deg, #2c2c3c, #1c1c28); box-shadow: 0 3px 0 #08080e, inset 0 1px 0 #44445a; }
+  #dpad button:active { transform: translateY(2px); box-shadow: 0 1px 0 #08080e; background: #30304a; }
+  #dpad .hub { border-radius: 50%; margin: 14px; background: radial-gradient(circle at 40% 35%, #3a3a50, #12121a 70%); }
+  #actions { grid-area: ac; display: grid; gap: 8px; grid-template-rows: repeat(3, 1fr); width: 104px; padding: 8px 0; }
+  #actions button { font-size: 13px; letter-spacing: 1px; border-radius: 4px; border: 1px solid var(--rim);
+    background: linear-gradient(180deg, #262634, #181822); box-shadow: 0 3px 0 #08080e; position: relative; padding-left: 20px; }
+  #actions button::before { content: ""; position: absolute; left: 9px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%;
+    background: #3a2a18; box-shadow: inset 0 0 2px #000; }
+  #actions button:not(:disabled)::before { background: #ffb040; box-shadow: 0 0 6px #ffb040; }
+  #actions button:active { transform: translateY(2px); box-shadow: 0 1px 0 #08080e; }
   #fxPanel { position: absolute; right: 8px; top: 48px; z-index: 5; background: var(--panel); border: 1px solid var(--line);
     border-radius: 8px; padding: 10px 12px; font-size: 13px; display: none; min-width: 190px; }
   #fxPanel.open { display: block; }
@@ -49,14 +83,28 @@
   #fxPanel .presets { display: flex; gap: 6px; margin-bottom: 6px; }
   #fxPanel .presets button { flex: 1; padding: 4px 0; font-size: 12px; }
   .keys { font-size: 11px; color: var(--dim); text-align: center; padding: 0 8px 6px; display: none; }
+  @media (orientation: portrait) and (max-height: 760px) {
+    #screen { width: min(100vw, calc((100dvh - 44px - 40px - 312px) * 4 / 3)); }
+    #pad { gap: 6px 12px; padding-top: 8px; }
+    #targets .row { min-height: 76px; padding-top: 8px; }
+    .film { height: 62px; transform: translateY(10px); }
+    .film b { font-size: 18px; }
+    #dpad { grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); padding: 4px; }
+    #actions { padding: 4px 0; }
+  }
   @media (orientation: landscape) {
     #main { flex-direction: row; justify-content: center; align-items: flex-start; }
     #screenCol { width: auto; }
-    #screen { width: min(calc(100vw - 250px), calc((100dvh - 44px - 44px) * 4 / 3)); }
+    #screen { width: min(calc(100vw - 310px), calc((100dvh - 44px - 44px) * 4 / 3)); }
     #msg { max-width: none; }
-    #pad { width: 240px; padding-top: 12px; }
+    #pad { width: 300px; border-top: 0; border-left: 1px solid var(--rim); }
+    #dpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); }
+    #actions { width: 82px; }
     #side { display: flex; flex-direction: column; }
     .keys { display: block; text-align: left; padding: 4px 12px; line-height: 1.7; }
+  }
+  @media (orientation: landscape) and (max-height: 520px) {
+    .keys { display: none; }
   }
 </style>
 </head>
@@ -90,19 +138,26 @@
     <div id="side">
       <div id="pad">
         <div id="targets">
-          <button data-t="-1">YOU</button><button data-t="0">R</button><button data-t="1">G</button><button data-t="2">B</button>
+          <span class="plate">Register · 色版を選ぶ</span>
+          <div class="row">
+            <button class="film" data-t="-1" aria-label="自分を動かす"><b>YOU</b><i>自分</i></button>
+            <button class="film" data-t="0" aria-label="赤の層を動かす"><b>R</b><i>赤版</i></button>
+            <button class="film" data-t="1" aria-label="緑の層を動かす"><b>G</b><i>緑版</i></button>
+            <button class="film" data-t="2" aria-label="青の層を動かす"><b>B</b><i>青版</i></button>
+          </div>
+          <div class="slot"></div>
         </div>
         <div id="dpad">
-          <span></span><button data-d="0,-1">▲</button><span></span>
-          <button data-d="-1,0">◀</button><span></span><button data-d="1,0">▶</button>
-          <span></span><button data-d="0,1">▼</button><span></span>
+          <span></span><button data-d="0,-1" aria-label="上">▲</button><span></span>
+          <button data-d="-1,0" aria-label="左">◀</button><span class="hub"></span><button data-d="1,0" aria-label="右">▶</button>
+          <span></span><button data-d="0,1" aria-label="下">▼</button><span></span>
         </div>
         <div id="actions">
           <button id="undo">UNDO</button><button id="reset">RESET</button><button id="hint">HINT</button>
         </div>
       </div>
       <div class="keys">
-        矢印 / WASD: 動かす<br>Q: 自分　1 2 3: 赤 緑 青の層<br>Tab: 対象を切替<br>Z: 1手戻す　R: やり直し<br>H: ヒント　Enter: 次へ
+        矢印 / WASD / 画面スワイプ: 動かす<br>Q: 自分　1 2 3: 赤 緑 青の層<br>Tab: 対象を切替<br>Z: 1手戻す　R: やり直し<br>H: ヒント　Enter: 次へ
       </div>
     </div>
   </div>
@@ -366,7 +421,17 @@ $('reset').addEventListener('click', reset);
 $('hint').addEventListener('click', hint);
 $('prev').addEventListener('click', () => { if (li > 0) loadLevel(li - 1); });
 $('next').addEventListener('click', () => { if (li + 1 < Math.min(save.unlocked, LEVELS.length)) loadLevel(li + 1); });
-$('screen').addEventListener('click', advance);
+let swipe0 = null, swiped = false;
+$('screen').addEventListener('pointerdown', e => { swipe0 = [e.clientX, e.clientY]; swiped = false; });
+$('screen').addEventListener('pointerup', e => {
+  if (!swipe0) return;
+  const dx = e.clientX - swipe0[0], dy = e.clientY - swipe0[1]; swipe0 = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 28 || mode !== 'play') return;
+  swiped = true;
+  if (Math.abs(dx) > Math.abs(dy)) act(Math.sign(dx), 0); else act(0, Math.sign(dy));
+});
+$('screen').addEventListener('click', () => { if (!swiped) advance(); swiped = false; });
+$('screen').style.touchAction = 'none';
 $('muteBtn').addEventListener('click', () => { save.mute = !save.mute; persist(); syncMute(); });
 function syncMute() { $('muteBtn').style.opacity = save.mute ? 0.35 : 1; }
 $('fxBtn').addEventListener('click', () => $('fxPanel').classList.toggle('open'));
@@ -422,6 +487,11 @@ const worldMat = new THREE.ShaderMaterial({
     uniform float uTime, uSel, uDither, uFlash, uDim;
     float bayer2(vec2 a){ a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
     float bayer4(vec2 a){ return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    float lay(int c, vec2 ci){
+      if (ci.x < 0.0 || ci.y < 0.0 || ci.x >= uGrid.x || ci.y >= uGrid.y) return 0.0;
+      vec4 t = texture2D(tMask, (ci + 0.5) / uGrid);
+      return c == 0 ? t.r : (c == 1 ? t.g : t.b);
+    }
     void main(){
       vec2 pp = floor(vec2(vUv.x * ${RW}.0, (1.0 - vUv.y) * ${RH}.0)) + 0.5;
       vec2 g = (pp - uOrigin) / ${CELL}.0;
@@ -429,7 +499,7 @@ const worldMat = new THREE.ShaderMaterial({
       if (g.x >= 0.0 && g.y >= 0.0 && g.x < uGrid.x && g.y < uGrid.y) {
         vec2 cf = floor(fract(g) * ${CELL}.0);
         col = (cf.x < 1.0 || cf.y < 1.0) ? vec3(0.075, 0.075, 0.13) : vec3(0.035, 0.035, 0.07);
-        vec3 ch = vec3(0.0); float n = 0.0;
+        vec3 ch = vec3(0.0); float n = 0.0, edge = 0.0;
         for (int c = 0; c < 3; c++) {
           vec2 q = g - uOff[c];
           vec2 ci = floor(q);
@@ -439,6 +509,13 @@ const worldMat = new THREE.ShaderMaterial({
           if (on < 0.5) continue;
           n += 1.0;
           vec2 f = floor(fract(q) * ${CELL}.0 + 0.001);
+          if (abs(uSel - float(c)) < 0.5) {   // 選択中の層: 形の外周に 2px のアウトライン
+            bool l = f.x < 2.0, r = f.x > 13.0, u = f.y < 2.0, d = f.y > 13.0;
+            if ((l && lay(c, ci + vec2(-1.0, 0.0)) < 0.5) || (r && lay(c, ci + vec2(1.0, 0.0)) < 0.5) ||
+                (u && lay(c, ci + vec2(0.0, -1.0)) < 0.5) || (d && lay(c, ci + vec2(0.0, 1.0)) < 0.5) ||
+                (l && u && lay(c, ci + vec2(-1.0, -1.0)) < 0.5) || (r && u && lay(c, ci + vec2(1.0, -1.0)) < 0.5) ||
+                (l && d && lay(c, ci + vec2(-1.0, 1.0)) < 0.5) || (r && d && lay(c, ci + vec2(1.0, 1.0)) < 0.5)) edge = 1.0;
+          }
           if (f.x < 1.0 || f.y < 1.0 || f.x > 14.0 || f.y > 14.0) continue;   // タイル間の 1px のすき間
           float pat = 0.0;
           if (c == 0) pat = mod(f.x + f.y, 4.0) < 1.0 ? 1.0 : 0.0;                              // 赤: 斜線
@@ -452,6 +529,11 @@ const worldMat = new THREE.ShaderMaterial({
         if (mx > 0.0) {
           if (n > 2.5) col = mix(ch, vec3(step(0.01, mn)), 0.72);   // 3 層の重なり = 白い床
           else col = ch * 0.6;
+        }
+        if (edge > 0.5) {
+          vec3 sc = uSel < 0.5 ? vec3(1.0, 0.25, 0.25) : (uSel < 1.5 ? vec3(0.3, 1.0, 0.4) : vec3(0.4, 0.55, 1.0));
+          float ph = mod(floor(pp.x + pp.y - uTime * 12.0), 6.0) < 3.0 ? 1.0 : 0.55;   // 流れる破線で点滅と区別
+          col = sc * ph;
         }
       }
       col *= uDim;
