@@ -656,7 +656,32 @@ function drawOverlay(time) {
     });
     // プレイヤー
     const bob = Math.floor(time * 4) % 2;
-    sprite(PLAYER, Math.round(ox + disp.px * CELL) + 2, Math.round(oy + disp.py * CELL) + 2 - bob, { '#': '#14142c', o: '#ffffff' });
+    const pxl = Math.round(ox + disp.px * CELL), pyl = Math.round(oy + disp.py * CELL);
+    const youSel = mode === 'play' && sel < 0;
+    if (youSel) {
+      // 自分を操作中: 脈打つ四隅の枠と、歩ける方向の矢印
+      const e = Math.floor(time * 4) % 2 ? 2 : 3, x0 = pxl - e, y0 = pyl - e, sz = CELL + 2 * e;
+      for (const [col, d, t] of [['#05050c', -1, 4], ['#ffffff', 0, 2]]) {   // 黒い縁取り + 太さ 2px の白枠
+        g2.fillStyle = col;
+        for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x0 + sz, y0, -1, 1], [x0, y0 + sz, 1, -1], [x0 + sz, y0 + sz, -1, -1]]) {
+          const L6 = 6 + t - 2;
+          g2.fillRect(sx > 0 ? cx + d : cx - L6 - d, sy > 0 ? cy + d : cy - t - d, L6, t);
+          g2.fillRect(sx > 0 ? cx + d : cx - t - d, sy > 0 ? cy + d : cy - L6 - d, t, L6);
+        }
+      }
+      {
+        g2.fillStyle = Math.floor(time * 4) % 2 ? '#14142c' : '#5a5a80';
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (typeof stepPlayer(L, S, dx, dy) !== 'object') continue;
+          const cx = ox + (S.px + dx) * CELL + 8 - dx, cy = oy + (S.py + dy) * CELL + 8 - dy;
+          for (let i = -2; i <= 2; i++) for (let t = 0; t < 2; t++) {
+            const a = 2 - Math.abs(i) - t;
+            g2.fillRect(cx + dx * a + (dy ? i : 0), cy + dy * a + (dx ? i : 0), 1, 1);
+          }
+        }
+      }
+    }
+    sprite(PLAYER, pxl + 2, pyl + 2 - bob, { '#': youSel ? '#05050c' : '#3a3a58', o: youSel ? ['#ff4a4a', '#4aff6a', '#6a8cff'][Math.floor(time * 6) % 3] : '#c8c8dc' });
     // 上の表示
     text('STAGE ' + String(li + 1).padStart(2, '0'), 6, 5, 2, '#e8e8f8');
     const sh = 'SHIFT ' + String(shifts).padStart(2, '0');
